@@ -414,7 +414,7 @@ impl App {
         if term_inner.contains(pos) {
             let r = (my - term_inner.y) as usize;
             let c = (mx - term_inner.x) as usize;
-            if is_input_box(&self.session.screen, r * COLS + c) {
+            if self.session.screen.is_input_box(r * COLS + c) {
                 return Pointer::Text;
             }
         }
@@ -1002,19 +1002,10 @@ fn cell_style(s: &Screen, pos: usize) -> Style {
         _ => {}
     }
     // 短い入力欄は下線で示す (画面の残り全体が入力欄になる TSO の行モードでは引かない)
-    if is_input_box(s, pos) {
+    if s.is_input_box(pos) {
         style = style.add_modifier(Modifier::UNDERLINED);
     }
     style
-}
-
-/// 下線で示す短い入力欄かどうか
-fn is_input_box(s: &Screen, pos: usize) -> bool {
-    let Some(start) = s.field_start(pos) else {
-        return false;
-    };
-    let fa = s.cells[start].attr.unwrap();
-    !fa.protected() && s.cells[pos].attr.is_none() && s.field_span(start).len() <= 160
 }
 
 #[cfg(test)]

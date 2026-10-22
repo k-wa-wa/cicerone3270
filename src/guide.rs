@@ -332,7 +332,11 @@ impl Guide {
             }
         }
 
-        notes.push(field_note(screen, row * COLS + col));
+        // 欄の種類だけでは説明にならないので、ほかの説明があるときと入力欄の上でだけ付ける
+        let pos = row * COLS + col;
+        if !notes.is_empty() || screen.is_input_box(pos) {
+            notes.push(field_note(screen, pos));
+        }
         notes
     }
 
@@ -731,5 +735,27 @@ keys = "SITE{enter}"
                 notes[0].title
             );
         }
+    }
+
+    #[test]
+    fn field_note_needs_other_notes_or_input_box() {
+        let g = builtin();
+        let mut s = Screen::default();
+        s.put_field(23, 1, 0x20);
+        s.put_str(23, 2, "    Logon ===>");
+        s.put_field(23, 17, 0x00);
+        s.put_field(23, 40, 0x20);
+
+        // 説明の無い保護領域 (空白) では何も出さない
+        assert_eq!(g.screen_id(&s), None);
+        assert!(g.notes_at(&s, 4, 10).is_empty());
+        // 用語の上では、用語と欄の種類を出す
+        let notes = g.notes_at(&s, 22, 6);
+        assert!(notes.len() >= 2);
+        assert_eq!(notes.last().unwrap().title, "23行7桁");
+        // 入力欄の上では、欄の種類だけでも出す
+        let notes = g.notes_at(&s, 22, 17);
+        assert_eq!(notes.len(), 1);
+        assert!(notes[0].body.contains("入力欄"));
     }
 }

@@ -144,6 +144,15 @@ impl Screen {
             .collect()
     }
 
+    /// 下線で示す短い入力欄かどうか (画面の残り全体が入力欄になる TSO の行モードは除く)
+    pub fn is_input_box(&self, pos: usize) -> bool {
+        let Some(start) = self.field_start(pos) else {
+            return false;
+        };
+        let fa = self.cells[start].attr.unwrap();
+        !fa.protected() && self.cells[pos].attr.is_none() && self.field_span(start).len() <= 160
+    }
+
     /// 画面に表示する文字。属性の位置と非表示フィールドは空白
     pub fn display_char(&self, pos: usize) -> char {
         let cell = &self.cells[pos];
