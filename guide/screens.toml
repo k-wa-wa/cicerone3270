@@ -1,0 +1,458 @@
+# 組み込みの画面の辞書 (MVS 3.8j・MVS/CE の一般的な内容。サイト固有の内容は書かない)。上から順に判定し、match の正規表現がすべて当てはまった最初の画面を使う。
+# match は画面の文字 (24 行を改行でつないだもの) に対して評価する。
+# 行・桁は 1 始まり。keys の {enter} {pf3} {clear} {tab} {home} {eraseeof} {pa1} はキーを表す。
+
+# ---------------------------------------------------------------- 接続・ログオン
+
+[[screen]]
+id = "hercules-logo"
+title = "Hercules の案内画面"
+match = ['Hercules Version', 'CLEAR the screen or hit ENTER']
+description = """
+接続した直後に Hercules (メインフレームのエミュレータ) が出す画面。\
+この端末は Hercules の 3270 端末装置 (装置アドレス 400 番台) につながった状態である。\
+まだ MVS とはつながっていない。Enter を押すと MVS (VTAM) のログオン画面に替わる。"""
+
+[[screen.action]]
+label = "Enter を押してログオン画面へ"
+keys = "{enter}"
+
+[[screen.region]]
+rows = [1, 4]
+title = "Hercules と MVS/CE の版"
+note = "エミュレータ Hercules の版、動いている OS (Linux / macOS)、MVS/CE (MVS 3.8j を使いやすくした配布物) の版。"
+
+[[screen]]
+id = "vtam-logon"
+title = "TSO のログオン画面"
+match = ['TSO Logon ===>']
+description = """
+MVS の通信制御プログラム VTAM が出す最初の画面 (USS 画面)。\
+ここで LOGON ユーザー名 と打って Enter を押すと TSO (対話型の作業環境) が始まる。\
+パスワードは次の画面で聞かれ、打った文字は表示されない。\
+LOGON ユーザー名/パスワード と 1 行で打つこともできるが、画面に残るので勧めない。"""
+
+[[screen.action]]
+label = "IBMUSER でログオン"
+keys = "LOGON IBMUSER{enter}"
+
+[[screen.region]]
+rows = [4, 11]
+title = "MVS/CE のロゴ"
+note = "MVS Community Edition。1981 年の MVS 3.8j (IBM が無償公開した最後の MVS) を、すぐ使えるように整えた配布物。"
+
+[[screen.region]]
+rows = [1, 1]
+cols = [60, 80]
+title = "MVS/CE の版"
+note = "接続先で動いている MVS/CE の版。"
+
+[[screen.region]]
+rows = [23, 23]
+title = "ログオンの入力欄"
+note = "LOGON ユーザー名 と打って Enter。ユーザーは IBMUSER (管理者) と MVSCE01 / MVSCE02 がある。"
+
+[[screen]]
+id = "logon-password"
+title = "パスワードの入力"
+match = ['ENTER CURRENT PASSWORD FOR']
+description = """
+TSO がパスワードを聞いている。カーソル位置の入力欄は非表示 (打った文字が見えない) になっている。\
+パスワードを打って Enter を押す。MVS/CE の初期値は IBMUSER が SYS1 だが、運用している環境では変えてあることが多い。"""
+
+[[screen]]
+id = "logon-in-use"
+title = "ログオンの拒否 (ユーザーが使用中)"
+match = ['IKJ56425I']
+description = """
+同じユーザーの TSO セッションがすでにある。前回、LOGOFF せずに端末を閉じたときに起きる。\
+MVS は切れたセッションを「再接続待ち」として残しているので、LOGON ユーザー名 RECONNECT で、\
+前回の続きの画面に戻れる。戻れない場合は、運用者がコンソールから C U=ユーザー名 で取り消す。"""
+
+[[screen.action]]
+label = "前回のセッションに戻る (IBMUSER RECONNECT)"
+keys = "LOGON IBMUSER RECONNECT{enter}"
+
+[[screen]]
+id = "reconnected"
+title = "前回のセッションに再接続した"
+match = ['IKT00300I']
+description = """
+LOGON ... RECONNECT で、切れていた TSO セッションに戻った。画面は空になっているが、\
+前回の作業 (ISPF など) は続いている。PA2 を押すと、前回の画面を描き直してもらえる。\
+READY で止まっていた場合は、そのままコマンドを打てる。"""
+
+[[screen.action]]
+label = "前回の画面を描き直す (PA2)"
+keys = "{pa2}"
+
+[[screen]]
+id = "logon-prompt"
+title = "ログオンのやり直し"
+match = ['IKJ56400A ENTER LOGON OR LOGOFF-\s*\z']
+description = """
+TSO が LOGON か LOGOFF のどちらかを待っている。ログオンの途中で別のコマンドを打つとここに来る。\
+LOGON ユーザー名 と打ち直す。"""
+
+[[screen.action]]
+label = "IBMUSER でログオン"
+keys = "LOGON IBMUSER{enter}"
+
+[[screen.action]]
+label = "やめる (LOGOFF)"
+keys = "LOGOFF{enter}"
+
+[[screen]]
+id = "erp"
+title = "画面の再表示 (エラー回復)"
+match = ['IKT00405I']
+description = """
+TSO が端末との通信で異常を検知し、画面を消してやり直した。直前の出力は失われている。\
+*** が出ていれば Enter で続ける。"""
+
+[[screen.action]]
+label = "Enter で続ける"
+keys = "{enter}"
+
+# ---------------------------------------------------------------- TSO (行単位の対話)
+
+[[screen]]
+id = "tso-welcome"
+title = "TSO の開始 (READY)"
+match = ['WELCOME TO MVS COMMUNITY EDITION', '(?s)READY\s*\z']
+description = """
+ログオンが済み、TSO がコマンドを待っている (最後の READY がその合図)。\
+TSO は 1 行ずつコマンドを打って結果を受け取る、いわばメインフレームのシェルである。\
+メニューで操作したいなら ISPF (または RFE) を起動する。\
+終わるときは必ず LOGOFF する。LOGOFF せずに閉じるとセッションが残る。"""
+
+[[screen.action]]
+label = "ISPF を開く (メニュー画面)"
+keys = "ISPF{enter}"
+
+[[screen.action]]
+label = "自分のデータセットを一覧 (LISTCAT)"
+keys = "LISTCAT{enter}"
+
+[[screen.action]]
+label = "時刻と CPU 時間を表示 (TIME)"
+keys = "TIME{enter}"
+
+[[screen.action]]
+label = "ログオフ"
+keys = "LOGOFF{enter}"
+
+[[screen.region]]
+rows = [1, 8]
+title = "ログオン時のお知らせ"
+note = "ログオンのたびに出るメッセージ (SYS1.BRODCAST に登録されたもの)。"
+
+[[screen.region]]
+rows = [9, 10]
+title = "MVP (パッケージ管理)"
+note = "MVS/CE のパッケージ管理 (MVP)。RX MVP LIST で、入れられるパッケージの一覧が出る。"
+
+[[screen]]
+id = "tso-more"
+title = "TSO の出力の続き待ち (***)"
+match = ['(?m)^ \*\*\*\s*\z']
+description = """
+出力が画面に収まらず、続きがある。*** は「読んだら Enter を押せ」の合図。\
+Enter で次の画面に進む。PA1 で出力を打ち切れる。"""
+
+[[screen.action]]
+label = "続きを表示"
+keys = "{enter}"
+
+[[screen.action]]
+label = "出力を打ち切る (PA1)"
+keys = "{pa1}"
+
+[[screen]]
+id = "tso-ready"
+title = "TSO のコマンド待ち (READY)"
+match = ['(?s)READY\s*\z']
+description = """
+TSO がコマンドを待っている。上には直前のコマンドの出力が行単位で残っている。\
+カーソルのある行に次のコマンドを打って Enter。"""
+
+[[screen.action]]
+label = "ISPF を開く (メニュー画面)"
+keys = "ISPF{enter}"
+
+[[screen.action]]
+label = "自分のデータセットを一覧 (LISTCAT)"
+keys = "LISTCAT{enter}"
+
+[[screen.action]]
+label = "画面を消す (CLEAR)"
+keys = "{clear}"
+
+[[screen.action]]
+label = "ログオフ"
+keys = "LOGOFF{enter}"
+
+[[screen]]
+id = "tso-blank"
+title = "空の画面 (TSO の入力待ち)"
+match = ['\A\s*\z']
+description = """
+画面に何も無い。TSO の行モードでは、画面が一杯になると全体を消して先頭から続ける。\
+カーソルの位置にそのままコマンドを打てる。\
+直前に RECONNECT した場合や、ISPF の画面が消えた場合は PA2 で描き直せる。"""
+
+[[screen.action]]
+label = "ISPF を開く (メニュー画面)"
+keys = "ISPF{enter}"
+
+[[screen.action]]
+label = "画面を描き直す (PA2)"
+keys = "{pa2}"
+
+[[screen.action]]
+label = "ログオフ"
+keys = "LOGOFF{enter}"
+
+# ---------------------------------------------------------------- ISPF / RFE (メニュー画面)
+
+[[screen]]
+id = "ispf-primary"
+title = "ISPF の主メニュー"
+match = ['ISPF Primary Option Menu']
+description = """
+ISPF はメインフレームのメニュー型の作業環境で、ファイル (データセット) の閲覧・編集・ジョブの投入などを画面で行う。\
+これは Wally ISPF (MVS 3.8j 向けの再実装)。Option ===> に番号を打って Enter で進み、PF3 で戻る。\
+3.4 で データセットの一覧を出し、そこから中身を見るのが基本の使い方である。"""
+
+[[screen.action]]
+label = "3.4 データセットの一覧"
+keys = "3.4{enter}"
+
+[[screen.action]]
+label = "SD ジョブの出力を見る (RevOut)"
+keys = "SD{enter}"
+
+[[screen.action]]
+label = "ISPF を終える (X)"
+keys = "X{enter}"
+
+[[screen.region]]
+rows = [5, 18]
+cols = [1, 58]
+title = "メニューの項目"
+note = "左端の番号・記号を Option ===> に打って Enter。3.4 のように続けて打つと、下の階層まで一度に進める。"
+
+[[screen.region]]
+rows = [5, 16]
+cols = [59, 80]
+title = "セッションの情報"
+note = "ログオン中のユーザー、端末の種類 (3277 = 古い 3270 の型として扱われている)、ログオン手続き (PROC) など。"
+
+[[screen]]
+id = "rfe-primary"
+title = "RFE の主メニュー"
+match = ['REVIEW FRONT END']
+description = """
+RFE (Review Front End) は ISPF に似たメニュー型の道具。MVS/CE の標準で入っている。\
+Command ===> に番号を打って Enter。3.4 でデータセットの一覧。PF3 で戻る。"""
+
+[[screen.action]]
+label = "3.4 データセットの一覧"
+keys = "3.4{enter}"
+
+[[screen.action]]
+label = "RFE を終える (X)"
+keys = "X{enter}"
+
+[[screen.region]]
+rows = [5, 14]
+cols = [57, 80]
+title = "セッションの情報"
+note = "ユーザー、システム名 (MVSC)、文字コード (CCSID 037 = 米国の EBCDIC)、端末の装置アドレス (CUU400)、データセット名の既定の接頭辞 (PREFIX) など。"
+
+[[screen]]
+id = "dslist-entry"
+title = "データセット一覧の条件"
+match = ['RFE DSLIST', 'Data set name prefix ==>']
+description = """
+一覧に出すデータセット名の先頭部分 (接頭辞) を指定する。\
+例えば SYS1 と打つと、システムのデータセット (SYS1.PARMLIB など) が出る。\
+データセット名は「.」で区切られた最大 44 文字の名前で、メインフレームのファイル名にあたる。"""
+
+[[screen.action]]
+label = "システムのデータセット (SYS1) を一覧"
+keys = "{home}{tab}{eraseeof}SYS1{enter}"
+
+[[screen.action]]
+label = "戻る (PF3)"
+keys = "{pf3}"
+
+[[screen.region]]
+rows = [17, 23]
+title = "選択コード"
+note = "一覧の行の左端に打つ 1 文字。B (Browse) で中身を見る、I (Info) で属性を見る。D (Delete) は削除なので打たない。"
+
+[[screen]]
+id = "dslist"
+title = "データセットの一覧"
+match = ['RFE DSLIST', 'DATA-SET-NAME']
+description = """
+データセットの一覧。行の左端 (S の列) に B を打って Enter を押すと、そのデータセットの中身を見られる (ブラウズ)。\
+マウスで左端をクリックするとカーソルが移る。G0003V00 のような名前は世代データ群 (GDG) の世代で、番号が大きいほど新しい。"""
+
+[[screen.action]]
+label = "戻る (PF3)"
+keys = "{pf3}"
+
+[[screen.region]]
+rows = [3, 22]
+cols = [1, 2]
+title = "S: 選択コードの欄"
+note = "ここに B (中身を見る)、I (属性)、S (概要) などを打って Enter。"
+
+[[screen.region]]
+rows = [3, 22]
+cols = [3, 35]
+title = "データセット名"
+note = "メインフレームのファイル名。「.」で区切った各部分を修飾子と呼び、先頭 (SYS1 など) を最上位修飾子という。カタログが名前から置き場所 (ボリューム) を引く。"
+
+[[screen.region]]
+rows = [3, 22]
+cols = [36, 42]
+title = "VOLUME: ボリューム"
+note = "データセットが置かれているディスク (DASD) の名前 (ボリュームシリアル)。MVS/CE では PUB000 が利用者のデータ用の 3380 型ディスク。"
+
+[[screen.region]]
+rows = [3, 22]
+cols = [43, 48]
+title = "ALTRK: 割り当てたトラック数"
+note = "ディスクの容量はトラック (円周 1 周) 単位で確保する。作るときに SPACE=(TRK,(一次,二次)) で指定した量。"
+
+[[screen.region]]
+rows = [3, 22]
+cols = [49, 54]
+title = "USTRK: 使っているトラック数"
+note = "割り当てのうち、実際にデータが入っている量。"
+
+[[screen.region]]
+rows = [3, 22]
+cols = [55, 58]
+title = "ORG: データセットの編成"
+note = "PS = 順編成 (先頭から順に読む 1 本のファイル)。PO = 区分編成 (PDS。中にメンバーを持つ、ディレクトリのようなもの)。"
+
+[[screen.region]]
+rows = [3, 22]
+cols = [59, 61]
+title = "FRMT: レコード形式 (RECFM)"
+note = "FB = 固定長 (Fixed) のレコードをまとめて (Blocked) 書く形式。メインフレームのファイルは改行ではなく、決まった長さのレコードの並びである。"
+
+[[screen.region]]
+rows = [3, 22]
+cols = [62, 65]
+title = "%: 使用率"
+note = "割り当てたトラックのうち使っている割合。"
+
+[[screen.region]]
+rows = [3, 22]
+cols = [66, 68]
+title = "XT: エクステント数"
+note = "ディスク上で連続した領域がいくつに分かれているか。容量が足りなくなると二次割り当てで増える (最大 16)。"
+
+[[screen.region]]
+rows = [3, 22]
+cols = [69, 74]
+title = "LRECL: レコード長"
+note = "1 レコードのバイト数。80 はパンチカード 1 枚分の長さで、JCL やプログラムのソースはこの長さで持つことが多い。"
+
+[[screen.region]]
+rows = [3, 22]
+cols = [75, 80]
+title = "BLKSZ: ブロック長"
+note = "ディスクに 1 回で読み書きする単位。レコード長の整数倍で、大きいほど入出力の回数が減る。"
+
+[[screen.region]]
+rows = [24, 24]
+cols = [60, 80]
+title = "空きメモリ"
+note = "この TSO セッションの領域 (リージョン) で、まだ使えるメモリの量。"
+
+# ---------------------------------------------------------------- ブラウズ (データセットの中身)
+
+[[screen]]
+id = "browse-hex"
+title = "データセットの中身 (16 進表示)"
+match = ['\A \S+ on \S+ -+ Line \d+ Col \d+ \d+', '(?m)^[-/\\]{80}$']
+description = """
+データの各バイトを 2 桁の 16 進で表示している。1 画面に 40 バイト分 (Col の範囲) が出る。\
+文字は EBCDIC (メインフレームの文字コード) で、例えば F0〜F9 が数字の 0〜9、C1 が A である。\
+パック 10 進数 (COMP-3) は 1 バイトに数字 2 桁を詰め、最後の半バイトが符号 (C = 正、D = 負)。\
+マウスを値に乗せると、レコード定義がわかるデータセットなら項目名と値が出る。"""
+
+[[screen.action]]
+label = "右の桁へ (PF11)"
+keys = "{pf11}"
+
+[[screen.action]]
+label = "左の桁へ (PF10)"
+keys = "{pf10}"
+
+[[screen.action]]
+label = "16 進をやめる (HEX OFF)"
+keys = "{home}{eraseeof}HEX OFF{enter}"
+
+[[screen.action]]
+label = "一覧に戻る (PF3)"
+keys = "{pf3}"
+
+[screen.browse]
+rows = [5, 22]
+hex = true
+
+[[screen.region]]
+rows = [1, 1]
+title = "見ているデータセットと位置"
+note = "データセット名、ボリューム、画面の先頭の行番号 (Line) と表示している桁の範囲 (Col)。"
+
+[[screen.region]]
+rows = [3, 4]
+title = "桁の目盛り"
+note = "16 進表示では 1 バイトが 2 桁になるため、目盛りもバイト単位で振られている。"
+
+[[screen]]
+id = "browse"
+title = "データセットの中身 (ブラウズ)"
+match = ['\A \S+ on \S+ -+ Line \d+ Col \d+ \d+', '(?m)^[-+]{80}$']
+description = """
+データセットの中身を読み取り専用で見ている。1 行が 1 レコード。\
+PF7 / PF8 で上下、PF10 / PF11 で左右に動かし、PF3 で戻る。\
+「.」に化けている所は文字でないデータ (パック 10 進数など) で、コマンド欄に HEX ON と打つと 16 進で読める。\
+マウスを値に乗せると、レコード定義がわかるデータセットなら項目名が出る。"""
+
+[[screen.action]]
+label = "16 進で表示 (HEX ON)"
+keys = "{home}{eraseeof}HEX ON{enter}"
+
+[[screen.action]]
+label = "下へ (PF8)"
+keys = "{pf8}"
+
+[[screen.action]]
+label = "上へ (PF7)"
+keys = "{pf7}"
+
+[[screen.action]]
+label = "一覧に戻る (PF3)"
+keys = "{pf3}"
+
+[screen.browse]
+rows = [5, 22]
+
+[[screen.region]]
+rows = [1, 1]
+title = "見ているデータセットと位置"
+note = "データセット名、ボリューム、画面の先頭の行番号 (Line) と表示している桁の範囲 (Col)。"
+
+[[screen.region]]
+rows = [3, 4]
+title = "桁の目盛り"
+note = "レコードの何桁目かを示す。COBOL のレコード定義の桁と対応する。"

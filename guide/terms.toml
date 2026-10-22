@@ -1,0 +1,169 @@
+# 組み込みの語の辞書 (サイト固有の内容は書かない)。画面のどこに出ても説明する語。pattern は 1 行の文字に対する正規表現。
+# 同じ位置に複数が当たる場合は、すべて表示する (上に書いたものが先)。個別の定義を一般的な定義より上に書く。
+
+# ---------------------------------------------------------------- メッセージ (個別)
+
+[[term]]
+pattern = '\bIKJ56400A\b'
+title = "メッセージ"
+note = "TSO が LOGON か LOGOFF を待っている。"
+
+[[term]]
+pattern = '\bIKJ56425I\b'
+title = "メッセージ"
+note = "同じユーザーのセッションがすでにあるため、ログオンを拒否した。LOGON ユーザー名 RECONNECT で前回のセッションに戻れる。"
+
+[[term]]
+pattern = '\bIKT00300I\b'
+title = "メッセージ"
+note = "再接続 (RECONNECT) に成功した。PA2 で前回の画面を描き直せる。"
+
+[[term]]
+pattern = '\bIKJ56410I\b'
+title = "メッセージ"
+note = "ログオンの手続き中には、そのコマンドを受け付けない。"
+
+[[term]]
+pattern = '\bIKJ56401I\b'
+title = "メッセージ"
+note = "コマンドの書き方が誤っている。"
+
+[[term]]
+pattern = '\bIKT00405I\b'
+title = "メッセージ"
+note = "端末との通信の異常から回復するため、TSO が画面を消した。"
+
+# ---------------------------------------------------------------- メッセージ (接頭辞ごと)
+
+[[term]]
+pattern = '\bIKJ\d{5}[AIEDW]\b'
+title = "TSO のメッセージ ID"
+note = "IKJ で始まるのは TSO のメッセージ。末尾の文字は種類で、A = 応答が必要、I = お知らせ、E = 対処が必要、D = 判断が必要、W = 待ち。IBM のマニュアル (Messages) を ID で引ける。"
+
+[[term]]
+pattern = '\bIKT\d{5}[AIEDW]\b'
+title = "TSO/VTAM のメッセージ ID"
+note = "IKT で始まるのは TSO と VTAM (通信制御) の間のメッセージ。末尾は種類 (A 応答 / I 情報 / E 要対処)。"
+
+[[term]]
+pattern = '\bIEF\d{3}[AIEDW]\b'
+title = "ジョブ管理のメッセージ ID"
+note = "IEF で始まるのはジョブの開始・終了・JCL の誤りなど、ジョブ管理のメッセージ。"
+
+[[term]]
+pattern = '\bIE[ACE]\d{3}[AIEDW]\b'
+title = "MVS のメッセージ ID"
+note = "IEA = 監視プログラム (OS の中核)、IEC = データ管理 (ファイルの入出力)、IEE = 運用者コマンドのメッセージ。"
+
+[[term]]
+pattern = '\$HASP\d{3}'
+title = "JES2 のメッセージ ID"
+note = "JES2 (ジョブの受付・実行待ち行列・出力を管理するサブシステム) のメッセージ。"
+
+# ---------------------------------------------------------------- 画面の部品
+
+[[term]]
+pattern = '\bREADY\b'
+title = "TSO の READY"
+note = "TSO が次のコマンドを待っている合図。シェルのプロンプトにあたる。"
+
+[[term]]
+pattern = '(Command|Option) ===>'
+title = "コマンド欄"
+note = "メニューの番号やコマンドを打つ欄。どの画面でも Home キーでここへ戻れる。"
+
+[[term]]
+pattern = 'Scroll ===>'
+title = "スクロール量"
+note = "PF7 / PF8 で動かす量。CS (CSR) = カーソル位置まで、PAGE = 1 画面、HALF = 半画面。"
+
+[[term]]
+pattern = '\*\*\*'
+title = "続きの合図"
+note = "TSO の行単位の出力で *** が出たら、Enter で続きを表示する。"
+
+[[term]]
+pattern = 'BOTTOM OF DATA'
+title = "データの終わり"
+note = "このデータセットの最後のレコードの次。"
+
+[[term]]
+pattern = 'EOF-TTR=[0-9A-F]+'
+title = "ファイルの終わりの位置"
+note = "TTR はディスク上の位置 (相対トラック番号 TT とレコード番号 R)。データの終わりの印 (EOF) がある場所。"
+
+[[term]]
+pattern = '\b\d+K FREE\b'
+title = "空きメモリ"
+note = "この TSO セッションの領域 (リージョン) の空き。"
+
+# ---------------------------------------------------------------- 用語
+
+[[term]]
+pattern = '\bIBMUSER\b'
+title = "ユーザー ID"
+note = "MVS/CE の管理者ユーザー。"
+
+[[term]]
+pattern = '\bCUU\d{3}\b'
+title = "端末の装置アドレス"
+note = "この端末が接続されている 3270 端末装置のアドレス (チャネル・装置番号)。MVS/CE の標準の構成では 400〜41F が TSO 用。"
+
+[[term]]
+pattern = '\bPUB000\b'
+title = "ボリューム PUB000"
+note = "MVS/CE の利用者のデータ用の 3380 型ディスク。ユーザーカタログ UCPUB000 もこのディスクにある。"
+
+[[term]]
+pattern = '\bMVS000\b'
+title = "ボリューム MVS000"
+note = "MVS/CE のシステム用ディスク (コマンドのライブラリなど)。"
+
+[[term]]
+pattern = '\bG\d{4}V\d{2}\b'
+title = "GDG の世代"
+note = "世代データ群 (GDG) の 1 世代。G の後の 4 桁が世代番号で、大きいほど新しい。V は版。JCL では (0) が最新、(-1) が 1 つ前、(+1) が新しく作る世代を指す。"
+
+[[term]]
+pattern = '\bGDG BASE\b'
+title = "GDG の基底"
+note = "世代データ群の定義そのもの (データは持たない)。何世代まで残すか (LIMIT) などを持つ。"
+
+[[term]]
+pattern = '\bCCSID\b'
+title = "文字コード"
+note = "コード化文字セット ID。037 は米国英語の EBCDIC。"
+
+[[term]]
+pattern = '\bEBCDIC\b'
+title = "EBCDIC"
+note = "メインフレームの文字コード。ASCII と並びが違い、A は C1、0 は F0 である。"
+
+# ---------------------------------------------------------------- カタログ
+
+[[term]]
+pattern = '\bNONVSAM\b'
+title = "非 VSAM データセット"
+note = "LISTCAT の出力で、通常のデータセット (順編成・区分編成など) を表す。VSAM はキー付きのファイル編成で別扱い。"
+
+[[term]]
+pattern = '\bIN-CAT\b'
+title = "登録されているカタログ"
+note = "このデータセットの名前と置き場所を記録しているカタログ。"
+
+[[term]]
+pattern = '\bUCPUB000\b'
+title = "ユーザーカタログ UCPUB000"
+note = "PUB000 上の利用者用カタログ。最上位修飾子ごとの別名 (ALIAS) でここを指すと、その名前のデータセットがここに登録される。"
+
+# ---------------------------------------------------------------- データセットの属性
+
+[[term]]
+pattern = '\bPS\b'
+title = "順編成 (PS)"
+note = "先頭から順に読み書きする 1 本のファイル。"
+
+[[term]]
+pattern = '\bPO\b'
+title = "区分編成 (PO / PDS)"
+note = "中に複数のメンバーを持つデータセット。ディレクトリとファイルの関係に近い。"

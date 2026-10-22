@@ -1,0 +1,17 @@
+[package]
+name = "cicerone3270"
+version = "0.1.0"
+edition = "2024"
+
+# パッケージ名は cicerone3270、コマンド名は短く ci3270 (x3270 / c3270 / s3270 の一族に合わせる)
+[[bin]]
+name = "ci3270"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+ratatui = "0.30"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+toml = "0.9"
+unicode-width = "0.2"
