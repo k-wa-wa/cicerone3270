@@ -1,5 +1,5 @@
-// TUI 本体。左に 3270 の画面、右に案内、下に状態行とキーのボタンを出す。
-// マウスを 3270 の画面に乗せると、その位置の説明をツールチップで出す。
+// TUI 本体。左に 3270 の画面、右にガイド、下に状態行とキーのボタンを出す。
+// マウスを 3270 の画面やガイドの用語に乗せると、説明をツールチップで出す。
 
 use std::collections::VecDeque;
 use std::io;
@@ -101,14 +101,16 @@ pub struct App {
     session: Session,
     guide: Guide,
     sources: Sources,
-    /// マウスが乗っている 3270 の画面上の位置 (行, 桁) と、端末上の座標
-    hover: Option<(usize, usize, u16, u16)>,
+    /// マウスが乗っている端末上の座標 (列, 行)
+    hover: Option<(u16, u16)>,
     /// 一時的なお知らせ (入力エラーなど)
     message: Option<(String, Instant)>,
     /// 実行待ちの手順 (辞書の「できること」を押したとき)
     pending: VecDeque<Step>,
     /// 前回描いたボタンの位置
     buttons: Vec<(Rect, Button)>,
+    /// 前回描いたガイド欄の各行 (開始 x, 行 y, 文字列)
+    side_lines: Vec<(u16, u16, String)>,
     term_area: Rect,
     quit_armed: Option<Instant>,
     quit: bool,
@@ -124,6 +126,7 @@ impl App {
             message: None,
             pending: VecDeque::new(),
             buttons: Vec::new(),
+            side_lines: Vec::new(),
             term_area: Rect::default(),
             quit_armed: None,
             quit: false,
@@ -341,7 +344,7 @@ impl App {
             .then(|| ((m.row - inner.y) as usize, (m.column - inner.x) as usize));
         match m.kind {
             MouseEventKind::Moved | MouseEventKind::Drag(_) => {
-                self.hover = cell.map(|(r, c)| (r, c, m.column, m.row));
+                self.hover = Some((m.column, m.row));
             }
             MouseEventKind::Down(MouseButton::Left) => {
                 if let Some((r, c)) = cell {
@@ -374,8 +377,9 @@ impl App {
 
     fn draw(&mut self, f: &mut Frame) {
         self.buttons.clear();
+        self.side_lines.clear();
         let area = f.area();
-        // 左に 3270 の画面・状態行・ボタン、右に案内。狭ければ案内を下に置く
+        // 左に 3270 の画面・状態行・ボタン、右にガイド。狭ければガイドを下に置く
         let (left, side) = if area.width >= TERM_W + SIDE_MIN_W {
             let [l, s] = Layout::horizontal([
                 Constraint::Length(TERM_W),
@@ -410,15 +414,17 @@ impl App {
             .title(title);
         f.render_widget(block, area);
         let inner = inner(area);
+        let hover_cell = self.hover.and_then(|(mx, my)| {
+            inner
+                .contains(Position::new(mx, my))
+                .then(|| ((my - inner.y) as usize, (mx - inner.x) as usize))
+        });
         let buf = f.buffer_mut();
         for r in 0..ROWS.min(inner.height as usize) {
             for c in 0..COLS.min(inner.width as usize) {
                 let p = r * COLS + c;
                 let mut style = cell_style(s, p);
-                if let Some((hr, hc, _, _)) = self.hover
-                    && hr == r
-                    && hc == c
-                {
+                if hover_cell == Some((r, c)) {
                     style = style.add_modifier(Modifier::REVERSED);
                 }
                 if let Some(cell) =
@@ -440,50 +446,55 @@ impl App {
             return;
         }
         let info = self.guide.screen_info(&self.session.screen);
+        let title_str = info.title.to_string();
+        let desc_str = info.description.to_string();
+        let actions: Vec<_> = info.actions.iter().map(|a| a.label.clone()).collect();
+
         let block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::DarkGray))
-            .title(" 案内 ");
+            .title(" ガイド ");
         let inner = block.inner(area);
         f.render_widget(block, area);
 
         let width = inner.width as usize;
         let mut lines = styled_lines(
-            info.title,
+            &title_str,
             width,
             Style::default()
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
         );
         lines.push(Line::raw(""));
-        lines.extend(styled_lines(info.description, width, Style::default()));
+        lines.extend(desc_lines(&self.guide, &desc_str, width));
         let desc_h = (lines.len() as u16).min(inner.height);
-        f.render_widget(
-            Paragraph::new(lines),
+        self.render_side_lines(
+            f,
             Rect {
                 height: desc_h,
                 ..inner
             },
+            lines,
         );
 
         let mut y = inner.y + desc_h + 1;
         let bottom = inner.y + inner.height;
-        if !info.actions.is_empty() && y < bottom {
-            f.render_widget(
-                Paragraph::new(Span::styled(
-                    "できること (クリックで実行)",
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD),
-                )),
+        if !actions.is_empty() && y < bottom {
+            self.render_side_lines(
+                f,
                 Rect {
                     y,
                     height: 1,
                     ..inner
                 },
+                vec![Line::from(Span::styled(
+                    "できること (クリックで実行)",
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ))],
             );
             y += 1;
-            let actions: Vec<_> = info.actions.iter().map(|a| a.label.clone()).collect();
             for (i, label) in actions.iter().enumerate() {
                 if y >= bottom {
                     break;
@@ -493,15 +504,16 @@ impl App {
                     height: 1,
                     ..inner
                 };
-                f.render_widget(
-                    Paragraph::new(Line::from(vec![
+                self.render_side_lines(
+                    f,
+                    rect,
+                    vec![Line::from(vec![
                         Span::styled(" ▶ ", Style::default().fg(Color::Cyan)),
                         Span::styled(
                             label.clone(),
                             Style::default().add_modifier(Modifier::UNDERLINED),
                         ),
-                    ])),
-                    rect,
+                    ])],
                 );
                 self.buttons.push((rect, Button::Action(i)));
                 y += 1;
@@ -509,35 +521,48 @@ impl App {
             y += 1;
         }
 
-        let help = [
-            "キー操作",
-            " Enter 送信  Tab/Shift+Tab 入力欄の移動  Home コマンド欄へ",
-            " F1〜F12 = PF1〜12  Shift+F1〜F12 = PF13〜24",
-            " Ctrl+C CLEAR  Ctrl+P PA1 (中断)  Ctrl+E 欄の残りを消す",
-            " Ctrl+R キーボードのロック解除  Insert 挿入モード  Ctrl+L 辞書の読み直し  Ctrl+Q 終了",
-            " マウスを画面に乗せると説明、クリックでカーソル移動",
-        ];
         if y + 1 < bottom {
-            let mut lines = Vec::new();
-            for (i, l) in help.iter().enumerate() {
-                let style = if i == 0 {
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default().fg(Color::Gray)
-                };
-                lines.extend(styled_lines(l, width, style));
-            }
-            f.render_widget(
-                Paragraph::new(lines),
+            let lines = key_help_lines(width);
+            self.render_side_lines(
+                f,
                 Rect {
                     y,
                     height: bottom - y,
                     ..inner
                 },
+                lines,
             );
         }
+
+        // ガイド欄の用語にマウスが乗っていれば反転させる
+        if let Some((mx, my)) = self.hover
+            && let Some((lx, _, text)) = self
+                .side_lines
+                .iter()
+                .find(|(lx, ly, _)| *ly == my && mx >= *lx)
+            && let (_, Some((sc, ec))) = self.guide.term_notes_at(text, (mx - lx) as usize)
+        {
+            let buf = f.buffer_mut();
+            for x in (lx + sc as u16)..(lx + ec as u16).min(inner.x + inner.width) {
+                if let Some(cell) = buf.cell_mut(Position::new(x, my)) {
+                    cell.set_style(cell.style().add_modifier(Modifier::REVERSED));
+                }
+            }
+        }
+    }
+
+    fn render_side_lines(&mut self, f: &mut Frame, rect: Rect, lines: Vec<Line<'static>>) {
+        for (i, line) in lines.iter().enumerate() {
+            let y = rect.y + i as u16;
+            if y >= rect.y + rect.height {
+                break;
+            }
+            let plain: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+            if !plain.is_empty() {
+                self.side_lines.push((rect.x, y, plain));
+            }
+        }
+        f.render_widget(Paragraph::new(lines), rect);
     }
 
     fn draw_status(&self, f: &mut Frame, area: Rect) {
@@ -622,10 +647,23 @@ impl App {
     }
 
     fn draw_tooltip(&self, f: &mut Frame) {
-        let Some((r, c, mx, my)) = self.hover else {
+        let Some((mx, my)) = self.hover else {
             return;
         };
-        let notes = self.guide.notes_at(&self.session.screen, r, c);
+        let term_inner = inner(self.term_area);
+        let notes = if term_inner.contains(Position::new(mx, my)) {
+            let r = (my - term_inner.y) as usize;
+            let c = (mx - term_inner.x) as usize;
+            self.guide.notes_at(&self.session.screen, r, c)
+        } else if let Some((lx, _, text)) = self
+            .side_lines
+            .iter()
+            .find(|(lx, ly, _)| *ly == my && mx >= *lx)
+        {
+            self.guide.term_notes_at(text, (mx - lx) as usize).0
+        } else {
+            Vec::new()
+        };
         if notes.is_empty() {
             return;
         }
@@ -669,9 +707,10 @@ impl App {
 /// 行頭に来てはいけない句読点・閉じ括弧は前の行に残す
 fn wrap(text: &str, width: usize) -> Vec<String> {
     const NO_HEAD: &str = "。、，．）」』】)]!?！？";
-    let width = width.max(2);
+    let width = width.max(4);
     let mut out = Vec::new();
     for para in text.lines() {
+        let bullet_indent = if para.starts_with("- ") { "  " } else { "" };
         // 英数字・記号の並び (空白以外の ASCII) と、それ以外の 1 文字ずつに分ける
         let mut tokens: Vec<String> = Vec::new();
         for c in para.chars() {
@@ -684,14 +723,12 @@ fn wrap(text: &str, width: usize) -> Vec<String> {
         let mut line = String::new();
         let mut w = 0;
         for t in tokens {
-            let tw: usize = t
-                .chars()
-                .map(|c| UnicodeWidthChar::width(c).unwrap_or(0))
-                .sum();
+            let tw = disp_width(&t);
             let head = t.chars().next().is_some_and(|c| NO_HEAD.contains(c));
             if w + tw > width && !line.is_empty() && !head {
                 out.push(std::mem::take(&mut line).trim_end().to_string());
-                w = 0;
+                line = bullet_indent.to_string();
+                w = bullet_indent.len();
                 if t == " " {
                     continue;
                 }
@@ -701,7 +738,8 @@ fn wrap(text: &str, width: usize) -> Vec<String> {
                 let cw = UnicodeWidthChar::width(c).unwrap_or(0);
                 if w + cw > width && !line.is_empty() && !head {
                     out.push(std::mem::take(&mut line));
-                    w = 0;
+                    line = bullet_indent.to_string();
+                    w = bullet_indent.len();
                 }
                 line.push(c);
                 w += cw;
@@ -712,11 +750,112 @@ fn wrap(text: &str, width: usize) -> Vec<String> {
     out
 }
 
+fn disp_width(s: &str) -> usize {
+    s.chars()
+        .map(|c| UnicodeWidthChar::width(c).unwrap_or(0))
+        .sum()
+}
+
 fn styled_lines(text: &str, width: usize, style: Style) -> Vec<Line<'static>> {
     wrap(text, width)
         .into_iter()
         .map(|l| Line::from(Span::styled(l, style)))
         .collect()
+}
+
+/// 画面の説明文を折り返し、箇条書きの記号と辞書にある用語を色分けする
+fn desc_lines(guide: &Guide, text: &str, width: usize) -> Vec<Line<'static>> {
+    wrap(text, width)
+        .into_iter()
+        .map(|l| {
+            let mut spans = Vec::new();
+            let rest = if let Some(stripped) = l.strip_prefix("- ") {
+                spans.push(Span::styled("- ", Style::default().fg(Color::Cyan)));
+                stripped
+            } else {
+                l.as_str()
+            };
+            let mut pos = 0;
+            for (start, end) in guide.term_byte_spans(rest) {
+                if pos < start {
+                    spans.push(Span::raw(rest[pos..start].to_string()));
+                }
+                spans.push(Span::styled(
+                    rest[start..end].to_string(),
+                    Style::default().fg(Color::LightCyan),
+                ));
+                pos = end;
+            }
+            if pos < rest.len() {
+                spans.push(Span::raw(rest[pos..].to_string()));
+            }
+            Line::from(spans)
+        })
+        .collect()
+}
+
+const KEY_HELP_LEFT: &[(&str, &str)] = &[
+    ("Enter", "送信"),
+    ("Tab / S-Tab", "入力欄の移動"),
+    ("Home", "コマンド欄へ"),
+    ("Ctrl+E", "欄の残りを消す"),
+    ("Insert", "挿入モード切替"),
+    ("Ctrl+L", "辞書の読み直し"),
+    ("ホバー", "用語・欄の説明"),
+];
+
+const KEY_HELP_RIGHT: &[(&str, &str)] = &[
+    ("F1〜F12", "PF1〜12"),
+    ("Shift+F1〜12", "PF13〜24"),
+    ("Ctrl+C", "CLEAR (画面消去)"),
+    ("Ctrl+P", "PA1 (中断)"),
+    ("Ctrl+R", "ロック解除"),
+    ("Ctrl+Q", "終了"),
+    ("クリック", "カーソル移動"),
+];
+
+fn pad_right(s: &str, target_w: usize) -> String {
+    let w = disp_width(s);
+    if w >= target_w {
+        s.to_string()
+    } else {
+        format!("{s}{}", " ".repeat(target_w - w))
+    }
+}
+
+fn key_cell(key: &str, desc: &str, key_w: usize, desc_w: usize) -> Vec<Span<'static>> {
+    let key_style = Style::default()
+        .fg(Color::White)
+        .add_modifier(Modifier::BOLD);
+    let desc_style = Style::default().fg(Color::Gray);
+    vec![
+        Span::styled(pad_right(key, key_w), key_style),
+        Span::styled(pad_right(desc, desc_w), desc_style),
+    ]
+}
+
+fn key_help_lines(width: usize) -> Vec<Line<'static>> {
+    let mut lines = vec![Line::from(Span::styled(
+        "キー操作",
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    ))];
+    if width >= 56 {
+        for (&(lk, ld), &(rk, rd)) in KEY_HELP_LEFT.iter().zip(KEY_HELP_RIGHT.iter()) {
+            let mut spans = vec![Span::raw(" ")];
+            spans.extend(key_cell(lk, ld, 12, 16));
+            spans.extend(key_cell(rk, rd, 13, 0));
+            lines.push(Line::from(spans));
+        }
+    } else {
+        for &(k, d) in KEY_HELP_LEFT.iter().chain(KEY_HELP_RIGHT.iter()) {
+            let mut spans = vec![Span::raw(" ")];
+            spans.extend(key_cell(k, d, 13, 0));
+            lines.push(Line::from(spans));
+        }
+    }
+    lines
 }
 
 fn note_lines(notes: &[Note], width: usize) -> Vec<Line<'static>> {

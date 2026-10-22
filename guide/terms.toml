@@ -1,5 +1,5 @@
 # 組み込みの語の辞書 (サイト固有の内容は書かない)。画面のどこに出ても説明する語。pattern は 1 行の文字に対する正規表現。
-# 同じ位置に複数が当たる場合は、すべて表示する (上に書いたものが先)。個別の定義を一般的な定義より上に書く。
+# 同じ位置に複数が当たる場合は、先に書いたものを優先する。個別の定義を一般的な定義より上に書く。
 
 # ---------------------------------------------------------------- メッセージ (個別)
 
@@ -79,40 +79,159 @@ note = "PF7 / PF8 で動かす量。CS (CSR) = カーソル位置まで、PAGE =
 
 [[term]]
 pattern = '\*\*\*'
-title = "続きの合図"
+title = "続きの合図 (***)"
 note = "TSO の行単位の出力で *** が出たら、Enter で続きを表示する。"
 
 [[term]]
 pattern = 'BOTTOM OF DATA'
-title = "データの終わり"
+title = "データの終わり (BOTTOM OF DATA)"
 note = "このデータセットの最後のレコードの次。"
 
 [[term]]
 pattern = 'EOF-TTR=[0-9A-F]+'
 title = "ファイルの終わりの位置"
-note = "TTR はディスク上の位置 (相対トラック番号 TT とレコード番号 R)。データの終わりの印 (EOF) がある場所。"
+note = "TTR はディスク上の位置 (相対トラック番号 TT とレコード番号 R)。データの終わりの印 (EOF: End of File) がある場所。"
 
 [[term]]
 pattern = '\b\d+K FREE\b'
 title = "空きメモリ"
 note = "この TSO セッションの領域 (リージョン) の空き。"
 
-# ---------------------------------------------------------------- 用語
+# ---------------------------------------------------------------- OS・サブシステム・道具
+
+[[term]]
+pattern = 'MVS/CE|MVS COMMUNITY EDITION'
+title = "MVS/CE (MVS Community Edition)"
+note = "1981 年の IBM の OS「MVS 3.8j」(Multiple Virtual Storage) を、現代の環境ですぐ使えるように整えた配布物。"
+
+[[term]]
+pattern = '\bMVS\b'
+title = "MVS (Multiple Virtual Storage)"
+note = "IBM のメインフレーム用 OS (基本ソフト)。「多重仮想記憶」の略で、複数のプログラムや利用者がそれぞれ独立した仮想メモリ空間を持って同時に動く。"
+
+[[term]]
+pattern = '\bVTAM\b'
+title = "VTAM (Virtual Telecommunications Access Method)"
+note = "「仮想通信アクセス方式」の略。MVS で 3270 端末などの通信を一括して受け持ち、TSO などのプログラムと端末をつなぐ通信制御プログラム。"
+
+[[term]]
+pattern = '\bUSS\b'
+title = "USS (Unformatted System Services)"
+note = "VTAM がログオン前の端末に出す初期画面やコマンドの仕組み。LOGON コマンドを解釈して TSO などのアプリケーションへ引き渡す。"
+
+[[term]]
+pattern = '\bTSO\b'
+title = "TSO (Time Sharing Option)"
+note = "「時分割オプション」の略。複数の利用者が端末から同時に MVS へログオンし、対話型でコマンドやプログラムを動かす仕組み (UNIX のシェルに近い)。"
+
+[[term]]
+pattern = '\bISPF\b'
+title = "ISPF (Interactive System Productivity Facility)"
+note = "TSO の上で動くメニュー型の作業環境。画面のメニューや一覧から、データセット (ファイル) の閲覧・編集やジョブの投入を行える。"
+
+[[term]]
+pattern = '\bRFE\b|REVIEW FRONT END'
+title = "RFE (Review Front End)"
+note = "MVS 3.8j 向けに作られた、ISPF と同じ操作感のメニュー環境。データセット一覧 (3.4) やブラウズ・編集を行う。"
+
+[[term]]
+pattern = '\bRevOut\b'
+title = "RevOut (Review Output)"
+note = "ISPF / RFE からバッチジョブ (JES2) の実行結果や出力を見る道具 (メニューの SD)。"
+
+[[term]]
+pattern = '\bMVP\b'
+title = "MVP (MVS/CE Package Manager)"
+note = "MVS/CE のパッケージ管理ツール。TSO で RX MVP LIST と打つと、導入できるソフトウェアの一覧が出る。"
+
+[[term]]
+pattern = '\bHercules\b'
+title = "Hercules (メインフレームのエミュレータ)"
+note = "IBM メインフレーム (System/370 など) の CPU や周辺装置 (3270 端末・磁気ディスクなど) を PC 上で再現するオープンソースのエミュレータ。"
+
+[[term]]
+pattern = '\bJES2\b'
+title = "JES2 (Job Entry Subsystem 2)"
+note = "「ジョブ入力サブシステム」の略。バッチ処理 (JCL で書かれたジョブ) の受付・実行順序の管理・印刷出力の保持を受け持つ。"
+
+[[term]]
+pattern = '\bJCL\b'
+title = "JCL (Job Control Language)"
+note = "「ジョブ制御言語」の略。メインフレームでどのプログラムを動かし、どのデータセット (ファイル) を入出力に使うかを指定する言語。"
+
+# ---------------------------------------------------------------- 端末・キー・コマンド
+
+[[term]]
+pattern = '\b327[078]\b'
+title = "IBM 3270 (ブロック転送型の表示端末)"
+note = "IBM メインフレーム用の表示端末の規格 (3277・3278 はその型番)。1 文字ずつではなく、入力欄に文字を溜めて Enter や PF キーを押したときにまとめてホストへ送る。"
+
+[[term]]
+pattern = '\bPF\d{1,2}(?:〜(?:PF)?\d{1,2})?\b'
+title = "PF キー (Program Function Key)"
+note = "3270 端末の機能キー (PF1〜PF24)。キーボードの F1〜F12 (PF13〜24 は Shift+F1〜F12) に対応する。ISPF では PF3=戻る、PF7/8=上下、PF10/11=左右が標準。"
+
+[[term]]
+pattern = '\bPA[123]\b'
+title = "PA キー (Program Attention Key)"
+note = "画面の入力内容を送らずにホストへ合図だけを送る 3270 の特殊キー。PA1 (Ctrl+P) は実行中の処理の中断、PA2 は画面の再描画に使われる。"
+
+[[term]]
+pattern = '\bCLEAR\b'
+title = "CLEAR キー (画面消去)"
+note = "3270 端末の画面を消去してホストへ通知するキー (Ctrl+C)。TSO の画面をきれいにするときや、Hercules の初期画面から進むときに使う。"
+
+[[term]]
+pattern = '\b(?i:logon)\b'
+title = "LOGON (ログオン)"
+note = "TSO のセッションを開始するコマンド。「LOGON ユーザー名」と打つ。切断されたセッションに戻るには「LOGON ユーザー名 RECONNECT」と打つ。"
+
+[[term]]
+pattern = '\bLOGOFF\b'
+title = "LOGOFF (ログオフ)"
+note = "TSO のセッションを終了するコマンド。READY の画面で打つ。LOGOFF せずに端末を閉じるとセッションが残り、次回の通常ログオンが拒否される。"
+
+[[term]]
+pattern = '\bRECONNECT\b'
+title = "RECONNECT (再接続)"
+note = "LOGOFF せずに切断されて残っている TSO セッションに、そのまま復帰する LOGON の指定。復帰後に PA2 を押すと画面を描き直す。"
+
+[[term]]
+pattern = '\bLISTCAT\b'
+title = "LISTCAT (List Catalog)"
+note = "カタログに登録されているデータセット (ファイル) の一覧を表示する TSO コマンド。引数なしで打つと自分のデータセットが出る。"
+
+[[term]]
+pattern = '\bHEX (ON|OFF)\b'
+title = "HEX ON / HEX OFF (16 進表示の切り替え)"
+note = "ブラウズ画面のコマンド欄に打つと、各バイトを 2 桁の 16 進数で表示するモード (HEX ON) と通常表示 (HEX OFF) を切り替える。"
+
+# ---------------------------------------------------------------- 用語・装置・文字コード
 
 [[term]]
 pattern = '\bIBMUSER\b'
-title = "ユーザー ID"
-note = "MVS/CE の管理者ユーザー。"
+title = "IBMUSER (管理者ユーザー ID)"
+note = "MVS/CE に最初から用意されている管理者ユーザー。初期パスワードは SYS1。"
+
+[[term]]
+pattern = '\bSYS1(?:\.[A-Z0-9]+)?\b'
+title = "SYS1 (システムのデータセット / 初期パスワード)"
+note = "OS (MVS) 自身の設定やプログラムが入っているデータセット群の先頭名 (SYS1.PARMLIB は起動設定など)。また MVS/CE では IBMUSER の初期パスワードにも使われている。"
 
 [[term]]
 pattern = '\bCUU\d{3}\b'
-title = "端末の装置アドレス"
-note = "この端末が接続されている 3270 端末装置のアドレス (チャネル・装置番号)。MVS/CE の標準の構成では 400〜41F が TSO 用。"
+title = "CUU (端末の装置アドレス)"
+note = "Channel and Unit (チャネル・装置番号) の略。この端末が接続されている 3270 端末装置のアドレスで、MVS/CE の標準構成では 400〜41F が TSO 用。"
+
+[[term]]
+pattern = '\bDASD\b'
+title = "DASD (Direct Access Storage Device)"
+note = "「直接アクセス記憶装置」の略で、磁気ディスク装置のこと。ディスク 1 台ごとに 6 文字の名前 (ボリューム通し番号、例: PUB000) を付けて管理する。"
 
 [[term]]
 pattern = '\bPUB000\b'
 title = "ボリューム PUB000"
-note = "MVS/CE の利用者のデータ用の 3380 型ディスク。ユーザーカタログ UCPUB000 もこのディスクにある。"
+note = "MVS/CE の利用者のデータ用の 3380 型ディスク (DASD)。ユーザーカタログ UCPUB000 もこのディスクにある。"
 
 [[term]]
 pattern = '\bMVS000\b'
@@ -121,49 +240,97 @@ note = "MVS/CE のシステム用ディスク (コマンドのライブラリな
 
 [[term]]
 pattern = '\bG\d{4}V\d{2}\b'
-title = "GDG の世代"
-note = "世代データ群 (GDG) の 1 世代。G の後の 4 桁が世代番号で、大きいほど新しい。V は版。JCL では (0) が最新、(-1) が 1 つ前、(+1) が新しく作る世代を指す。"
+title = "GDG の世代番号"
+note = "世代データ群 (GDG: Generation Data Group) の 1 世代。G の後の 4 桁が世代番号で、大きいほど新しい。V は版。JCL では (0) が最新、(-1) が 1 つ前、(+1) が新規世代を指す。"
 
 [[term]]
 pattern = '\bGDG BASE\b'
-title = "GDG の基底"
-note = "世代データ群の定義そのもの (データは持たない)。何世代まで残すか (LIMIT) などを持つ。"
+title = "GDG BASE (世代データ群の基底)"
+note = "世代データ群 (GDG) の定義そのもの (データは持たない)。何世代まで残すか (LIMIT) などを持つ。"
+
+[[term]]
+pattern = '\bGDG\b'
+title = "GDG (Generation Data Group / 世代データ群)"
+note = "日次・月次などで繰り返し作る同種のデータセットを、世代番号 (G0001V00, G0002V00...) で自動的に束ねて管理する仕組み。"
 
 [[term]]
 pattern = '\bCCSID\b'
-title = "文字コード"
-note = "コード化文字セット ID。037 は米国英語の EBCDIC。"
+title = "CCSID (Coded Character Set Identifier)"
+note = "「コード化文字セット識別子」の略。文字コードの種類を表す番号で、037 は米国英語の EBCDIC。"
 
 [[term]]
 pattern = '\bEBCDIC\b'
-title = "EBCDIC"
-note = "メインフレームの文字コード。ASCII と並びが違い、A は C1、0 は F0 である。"
+title = "EBCDIC (Extended Binary Coded Decimal Interchange Code)"
+note = "「拡張二進化十進コード」の略。IBM メインフレームの文字コードで、ASCII とは並びが異なり、A は X'C1'、0 は X'F0' である。"
 
-# ---------------------------------------------------------------- カタログ
+[[term]]
+pattern = '\bCOMP-3\b'
+title = "COMP-3 (パック 10 進数 / Packed Decimal)"
+note = "COBOL などで金額や数量を表す数値形式。1 バイトに 10 進 2 桁を詰め、最後の半バイトで符号 (C/F=正、D=負) を表す。"
+
+[[term]]
+pattern = '\bPROC\b'
+title = "PROC (Procedure / 手続き)"
+note = "あらかじめ登録された JCL の雛形。TSO ではログオン時に実行する初期設定の JCL (ログオンプロシージャ) を指す。"
+
+[[term]]
+pattern = '\bPREFIX\b'
+title = "PREFIX (データセット名の接頭辞)"
+note = "データセット名を引用符なしで書いたときに先頭へ自動的に補われる名前 (通常は自分のユーザー ID)。"
+
+# ---------------------------------------------------------------- カタログ・データセット属性
 
 [[term]]
 pattern = '\bNONVSAM\b'
-title = "非 VSAM データセット"
-note = "LISTCAT の出力で、通常のデータセット (順編成・区分編成など) を表す。VSAM はキー付きのファイル編成で別扱い。"
+title = "NONVSAM (非 VSAM データセット)"
+note = "LISTCAT の出力で、通常のデータセット (順編成 PS・区分編成 PO など) を表す。VSAM はキー付きのファイル編成で別扱い。"
+
+[[term]]
+pattern = '\bVSAM\b'
+title = "VSAM (Virtual Storage Access Method)"
+note = "「仮想記憶アクセス方式」の略。キーによる高速な検索などができる、メインフレームのファイル編成方式。"
 
 [[term]]
 pattern = '\bIN-CAT\b'
-title = "登録されているカタログ"
-note = "このデータセットの名前と置き場所を記録しているカタログ。"
+title = "IN-CAT (登録されているカタログ)"
+note = "このデータセットの名前と置き場所 (ボリューム) を記録しているカタログ。"
 
 [[term]]
 pattern = '\bUCPUB000\b'
 title = "ユーザーカタログ UCPUB000"
 note = "PUB000 上の利用者用カタログ。最上位修飾子ごとの別名 (ALIAS) でここを指すと、その名前のデータセットがここに登録される。"
 
-# ---------------------------------------------------------------- データセットの属性
+[[term]]
+pattern = '\bDSLIST\b'
+title = "DSLIST (Data Set List)"
+note = "ISPF / RFE のメニュー 3.4 で開くデータセット (ファイル) の一覧画面。"
 
 [[term]]
 pattern = '\bPS\b'
-title = "順編成 (PS)"
+title = "PS (Physical Sequential / 順編成)"
 note = "先頭から順に読み書きする 1 本のファイル。"
 
 [[term]]
-pattern = '\bPO\b'
-title = "区分編成 (PO / PDS)"
-note = "中に複数のメンバーを持つデータセット。ディレクトリとファイルの関係に近い。"
+pattern = '\b(?:PO|PDS)\b'
+title = "PO / PDS (Partitioned Organization / 区分編成)"
+note = "中に複数のメンバー (小ファイル) を持つデータセット。ディレクトリとファイルの関係に近い。"
+
+[[term]]
+pattern = '\bFB\b'
+title = "FB (Fixed Blocked / 固定長ブロック化)"
+note = "レコード形式 (RECFM) の 1 つ。決まった長さ (Fixed) のレコードを複数まとめて (Blocked) ディスクに読み書きする。"
+
+[[term]]
+pattern = '\bLRECL\b'
+title = "LRECL (Logical Record Length / 論理レコード長)"
+note = "1 レコードあたりのバイト数。80 はパンチカード 1 枚分の長さで、JCL やプログラムのソースでよく使われる。"
+
+[[term]]
+pattern = '\bBLKSZ\b'
+title = "BLKSZ (Block Size / ブロック長)"
+note = "ディスクに 1 回の入出力で読み書きする塊のバイト数。レコード長 (LRECL) の整数倍にする。"
+
+[[term]]
+pattern = '\b(?:RECFM|FRMT)\b'
+title = "RECFM / FRMT (Record Format / レコード形式)"
+note = "レコードの長さの揃え方。F=固定長、V=可変長、U=不定長、B=ブロック化 (複数レコードをまとめる)。"

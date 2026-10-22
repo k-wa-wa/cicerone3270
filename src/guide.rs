@@ -11,6 +11,7 @@ use std::path::PathBuf;
 
 use regex::Regex;
 use serde::Deserialize;
+use unicode_width::UnicodeWidthChar;
 
 use crate::screen::{COLS, Screen};
 
@@ -250,33 +251,67 @@ impl Guide {
             },
             None => ScreenInfo {
                 title: "(辞書に無い画面)",
-                description: "この画面の説明はまだ辞書に無い。\
-                    マウスを文字に乗せると、メッセージ ID などの語の説明と、その位置の入力欄の種類が出る。",
+                description: "- この画面の説明はまだ辞書に無い\n\
+                    - マウスを文字に乗せると用語や入力欄の説明が出る",
                 actions: &[],
             },
         }
     }
 
-    /// 画面上の (row, col) (0 始まり) の説明
-    pub fn notes_at(&self, screen: &Screen, row: usize, col: usize) -> Vec<Note> {
+    /// 1 行の文字列の中で、表示桁 col (0 始まり) の位置に当たる語の説明と、
+    /// 最初に当たった語の表示桁の範囲 (start_col, end_col) を返す
+    pub fn term_notes_at(&self, line: &str, col: usize) -> (Vec<Note>, Option<(usize, usize)>) {
         let mut notes = Vec::new();
-        let text = screen.text();
-        let line = screen.row_text(row);
-        let def = self.find(&text);
-
-        // 語 (同じ語に複数の定義が当たる場合は先に書いたものだけ)
+        let mut span = None;
         let mut covered: Vec<(usize, usize)> = Vec::new();
         for (re, t) in &self.terms {
-            for m in re.find_iter(&line) {
-                if m.start() <= col && col < m.end() && !covered.contains(&(m.start(), m.end())) {
+            for m in re.find_iter(line) {
+                if covered.iter().any(|&(s, e)| m.start() < e && s < m.end()) {
+                    continue;
+                }
+                let start_col = disp_width(&line[..m.start()]);
+                let end_col = start_col + disp_width(m.as_str());
+                if start_col <= col && col < end_col {
                     covered.push((m.start(), m.end()));
+                    if span.is_none() {
+                        span = Some((start_col, end_col));
+                    }
+                    let matched = m.as_str().trim();
+                    let title = if t.title.contains(matched) {
+                        t.title.clone()
+                    } else {
+                        format!("{} ({matched})", t.title)
+                    };
                     notes.push(Note {
-                        title: format!("{} ({})", t.title, m.as_str().trim()),
+                        title,
                         body: t.note.clone(),
                     });
                 }
             }
         }
+        (notes, span)
+    }
+
+    /// 1 行の文字列の中で、辞書に当たる語のバイト範囲 (start, end) を先頭から順に返す
+    pub fn term_byte_spans(&self, line: &str) -> Vec<(usize, usize)> {
+        let mut covered: Vec<(usize, usize)> = Vec::new();
+        for (re, _) in &self.terms {
+            for m in re.find_iter(line) {
+                if !covered.iter().any(|&(s, e)| m.start() < e && s < m.end()) {
+                    covered.push((m.start(), m.end()));
+                }
+            }
+        }
+        covered.sort_by_key(|&(s, _)| s);
+        covered
+    }
+
+    /// 画面上の (row, col) (0 始まり) の説明
+    pub fn notes_at(&self, screen: &Screen, row: usize, col: usize) -> Vec<Note> {
+        let text = screen.text();
+        let line = screen.row_text(row);
+        let def = self.find(&text);
+        let (mut notes, _) = self.term_notes_at(&line, col);
 
         if let Some(def) = def {
             for r in &def.region {
@@ -370,6 +405,12 @@ impl Guide {
             body,
         })
     }
+}
+
+fn disp_width(s: &str) -> usize {
+    s.chars()
+        .map(|c| UnicodeWidthChar::width(c).unwrap_or(0))
+        .sum()
 }
 
 fn kind_name(kind: &str) -> &str {
@@ -522,5 +563,45 @@ keys = "SITE{enter}"
             decode_value("packed", &[0x00, 0x00, 0x00, 0x19, 0x22, 0x7C]).starts_with("19,227 ")
         );
         assert!(decode_value("packed", &[0x00, 0x00, 0x00, 0x00, 0x12, 0x3D]).starts_with("-123 "));
+    }
+
+    #[test]
+    fn term_notes_on_japanese_line() {
+        let g = builtin();
+        let line = "- MVS の通信制御 VTAM が出す最初の画面 (USS 画面)";
+        // "- " は幅 2、"MVS" は桁 2..5
+        let (notes, span) = g.term_notes_at(line, 3);
+        assert_eq!(span, Some((2, 5)));
+        assert!(notes[0].title.contains("Multiple Virtual Storage"));
+        // "VTAM" は桁 17..21
+        let (notes, span) = g.term_notes_at(line, 18);
+        assert_eq!(span, Some((17, 21)));
+        assert!(
+            notes[0]
+                .title
+                .contains("Virtual Telecommunications Access Method")
+        );
+    }
+
+    #[test]
+    fn screen_descriptions_are_compact() {
+        let g = builtin();
+        for s in &g.screens {
+            let lines: Vec<_> = s.def.description.lines().collect();
+            assert!(
+                lines.len() <= 3,
+                "screen {} has {} lines",
+                s.def.id,
+                lines.len()
+            );
+            for l in lines {
+                assert!(
+                    disp_width(l) <= 60,
+                    "screen {} line too wide ({}): {l}",
+                    s.def.id,
+                    disp_width(l)
+                );
+            }
+        }
     }
 }
