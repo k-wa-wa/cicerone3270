@@ -114,6 +114,56 @@ description = """
 label = "Enter で続ける"
 keys = "{enter}"
 
+# ---------------------------------------------------------------- KICKS (TSO の中で動くトランザクション処理)
+# MVS/CE には入っていない追加のソフトウェア。導入したサイトで出る画面。
+# 起動中の出力は *** で終わるため、TSO の出力の続き待ち (tso-more) より先に判定する。
+
+[[screen]]
+id = "kicks-startup"
+title = "KICKS の起動中 (表とプログラムの読み込み)"
+match = ['(?m)^ ?(KICKS version \d|loading KIK\S+ - \d+ bytes|OPID=\d+,)', '(?m)^ \*\*\*\s*\z']
+description = """
+- KICKS (CICS 互換) が表と管理プログラムを読み込んでいる
+- Enter で続きを表示する。終わると KICKS の最初の画面が出る"""
+
+[[screen.action]]
+label = "続きを表示"
+keys = "{enter}"
+
+[[screen]]
+id = "kicks-ksgm"
+title = "KICKS の開始画面 (KSGM)"
+match = ['KSGM for \S+ user', 'CLEAR to continue']
+description = """
+- KICKS が始まった。この画面はトランザクション KSGM が出す
+- CLEAR で画面を消し、トランザクション ID (4 文字) を打つ
+- KSSF を打つと KICKS を終えて TSO に戻る"""
+
+[[screen.action]]
+label = "画面を消す (CLEAR)"
+keys = "{clear}"
+
+[[screen.action]]
+label = "KICKS の説明 (PF1)"
+keys = "{pf1}"
+
+[[screen.region]]
+rows = [1, 1]
+title = "利用者・端末・システム・時刻"
+note = "KICKS を動かしている TSO の利用者、端末、システム名、日時。"
+
+[[screen]]
+id = "kicks-shutdown"
+title = "KICKS の終了"
+match = ['\A\s*KICKS is shutting down']
+description = """
+- KICKS を終えて TSO に戻るところ (サインオフ KSSF の後)
+- Enter で TSO の READY が出る (2 回要ることがある)"""
+
+[[screen.action]]
+label = "TSO に戻る"
+keys = "{enter}"
+
 # ---------------------------------------------------------------- TSO (行単位の対話)
 
 [[screen]]
@@ -197,7 +247,8 @@ title = "空の画面 (TSO の入力待ち)"
 match = ['\A\s*\z']
 description = """
 - 画面が一杯になり消去された状態。そのままコマンドを打てる
-- RECONNECT 直後や ISPF の画面が消えたときは PA2 で描き直す"""
+- RECONNECT 直後や ISPF の画面が消えたときは PA2 で描き直す
+- KICKS の中なら、トランザクション ID を打つ (KSSF で終了)"""
 
 [[screen.action]]
 label = "ISPF を開く (メニュー画面)"

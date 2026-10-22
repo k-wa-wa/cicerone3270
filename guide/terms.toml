@@ -159,6 +159,46 @@ pattern = '\bJCL\b'
 title = "JCL (Job Control Language)"
 note = "「ジョブ制御言語」の略。メインフレームでどのプログラムを動かし、どのデータセット (ファイル) を入出力に使うかを指定する言語。"
 
+[[term]]
+pattern = 'no alloc/DD for file \S+ *, disabling'
+title = "KICKS のメッセージ"
+note = "FCT (ファイルの表) にあるファイルの DD が割り当てられていないため、そのファイルを使えなくした。起動の CLIST が割り当てていないか、データセットが無い。"
+
+[[term]]
+pattern = '\bKIK(SIT|PCT|PPT|FCT|DCT)\S{2}'
+title = "KICKS の表"
+note = "SIT = 初期設定 (使う表と管理プログラム)、PCT = トランザクション ID とプログラム、PPT = プログラムとマップ、FCT = ファイル、DCT = 一時データの宛先。末尾 2 文字の接尾辞で版を選ぶ (KICKS 付属は 1$)。"
+
+[[term]]
+pattern = '\bKIK(SIP|PCP|KCP|FCP|DCP|BMS|TCP|SCP|TSP)\S{2}'
+title = "KICKS の管理プログラム"
+note = "PCP = プログラム制御、KCP = タスク制御、FCP = ファイル制御、DCP = 一時データ、BMS = 画面のマップ、TCP = 端末制御 (2$ は MVS 3.8 向け)、SCP = 記憶域、TSP = 一時記憶域。"
+
+[[term]]
+pattern = '\bKSSF\b'
+title = "KSSF (KICKS のサインオフ)"
+note = "KICKS を終えて TSO に戻るトランザクション。空の画面に KSSF と打って Enter を押す。"
+
+[[term]]
+pattern = '\bKSGM\b'
+title = "KSGM (KICKS の開始画面)"
+note = "KICKS が始まったときに出す画面 (good morning) のトランザクション。空の画面で KSGM と打つと再び出る。"
+
+[[term]]
+pattern = '\bPLTPI\b'
+title = "PLTPI (KICKS の最初のトランザクション)"
+note = "KICKS が始まるとすぐ動くトランザクション。KICKS 付属の設定では KSGM (開始画面)。終わるときに動くものは PLTSD。"
+
+[[term]]
+pattern = '\bKICKS\b'
+title = "KICKS for TSO"
+note = "IBM の CICS (オンラインのトランザクション処理) を真似た無償のソフトウェア。TSO の中で動き、4 文字のトランザクション ID でプログラムを呼ぶ。作者は Mike Noel。"
+
+[[term]]
+pattern = '\bCICS\b'
+title = "CICS (Customer Information Control System)"
+note = "IBM のオンラインのトランザクション処理。端末からの入力ごとに短いプログラム (トランザクション) を動かし、画面を返す。銀行の勘定系などのオンラインを支える。"
+
 # ---------------------------------------------------------------- 端末・キー・コマンド
 
 [[term]]

@@ -28,6 +28,18 @@ impl Session {
         })
     }
 
+    #[cfg(test)]
+    pub fn for_test(screen: Screen) -> Session {
+        let (_tx, rx) = channel();
+        Session {
+            host: "127.0.0.1:3270".to_string(),
+            screen,
+            sender: Sender3270::dummy(),
+            rx,
+            closed: None,
+        }
+    }
+
     /// 届いているレコードをすべて処理する。画面が変わったら true
     pub fn poll(&mut self) -> bool {
         let mut changed = false;

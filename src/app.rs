@@ -37,6 +37,24 @@ enum Button {
     Quit,
 }
 
+/// OS のマウスポインタの形 (OSC 22 対応端末で切り替える)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Pointer {
+    Default,
+    Hand,
+    Text,
+}
+
+impl Pointer {
+    fn osc22(self) -> &'static str {
+        match self {
+            Pointer::Default => "\x1b]22;default\x07",
+            Pointer::Hand => "\x1b]22;pointer\x07",
+            Pointer::Text => "\x1b]22;text\x07",
+        }
+    }
+}
+
 /// 操作の 1 手
 #[derive(Clone, Debug)]
 enum Step {
@@ -112,6 +130,7 @@ pub struct App {
     /// 前回描いたガイド欄の各行 (開始 x, 行 y, 文字列)
     side_lines: Vec<(u16, u16, String)>,
     term_area: Rect,
+    pointer: Pointer,
     quit_armed: Option<Instant>,
     quit: bool,
 }
@@ -128,6 +147,7 @@ impl App {
             buttons: Vec::new(),
             side_lines: Vec::new(),
             term_area: Rect::default(),
+            pointer: Pointer::Default,
             quit_armed: None,
             quit: false,
         }
@@ -136,7 +156,9 @@ impl App {
     pub fn run(mut self) -> anyhow::Result<()> {
         let mut terminal = ratatui::init();
         execute!(io::stdout(), EnableMouseCapture, EnableBracketedPaste)?;
+        let _ = io::Write::write_all(&mut io::stdout(), Pointer::Default.osc22().as_bytes());
         let result = self.event_loop(&mut terminal);
+        let _ = io::Write::write_all(&mut io::stdout(), b"\x1b]22;\x07");
         let _ = execute!(io::stdout(), DisableMouseCapture, DisableBracketedPaste);
         ratatui::restore();
         result
@@ -161,6 +183,7 @@ impl App {
             }
             if dirty {
                 terminal.draw(|f| self.draw(f))?;
+                self.update_pointer();
                 dirty = false;
             }
             if event::poll(Duration::from_millis(30))? {
@@ -199,7 +222,7 @@ impl App {
             Step::Text(t) => t.chars().try_for_each(|c| screen.type_char(c)),
             Step::Aid(k) => {
                 if screen.locked {
-                    Err("キーボードがロックされている (ホストの応答待ち)。Ctrl+R で解除できる")
+                    Err("応答待ちでロック中 (Ctrl+R で解除)")
                 } else {
                     self.session.press(k.aid());
                     Ok(())
@@ -314,15 +337,12 @@ impl App {
         if safe
             || self
                 .quit_armed
-                .is_some_and(|t| t.elapsed() < Duration::from_secs(3))
+                .is_some_and(|t| t.elapsed() < Duration::from_secs(5))
         {
             self.quit = true;
         } else {
             self.quit_armed = Some(Instant::now());
-            self.notify(
-                "LOGOFF していないと TSO のセッションが残る (次回は LOGON ユーザー名 RECONNECT で戻れる)。\
-                 終えるならもう一度 Ctrl+Q",
-            );
+            self.notify("LOGOFF しないとセッションが残る。もう一度押すと終了");
         }
     }
 
@@ -373,6 +393,34 @@ impl App {
         }
     }
 
+    fn update_pointer(&mut self) {
+        let next = self.desired_pointer();
+        if next != self.pointer {
+            self.pointer = next;
+            let _ = io::Write::write_all(&mut io::stdout(), next.osc22().as_bytes());
+            let _ = io::Write::flush(&mut io::stdout());
+        }
+    }
+
+    fn desired_pointer(&self) -> Pointer {
+        let Some((mx, my)) = self.hover else {
+            return Pointer::Default;
+        };
+        let pos = Position::new(mx, my);
+        if self.buttons.iter().any(|(r, _)| r.contains(pos)) {
+            return Pointer::Hand;
+        }
+        let term_inner = inner(self.term_area);
+        if term_inner.contains(pos) {
+            let r = (my - term_inner.y) as usize;
+            let c = (mx - term_inner.x) as usize;
+            if is_input_box(&self.session.screen, r * COLS + c) {
+                return Pointer::Text;
+            }
+        }
+        Pointer::Default
+    }
+
     // ---- 描画 ----
 
     fn draw(&mut self, f: &mut Frame) {
@@ -390,16 +438,17 @@ impl App {
         } else {
             (area, None)
         };
+        let status_lines = self.status_lines(left.width as usize);
         let [term, status, keys, rest] = Layout::vertical([
             Constraint::Length(TERM_H),
-            Constraint::Length(1),
+            Constraint::Length(status_lines.len() as u16),
             Constraint::Length(2),
             Constraint::Min(0),
         ])
         .areas(left);
         self.term_area = term;
         self.draw_terminal(f, term);
-        self.draw_status(f, status);
+        f.render_widget(Paragraph::new(status_lines), status);
         self.draw_keys(f, keys);
         self.draw_side(f, side.unwrap_or(rest));
         self.draw_tooltip(f);
@@ -504,15 +553,22 @@ impl App {
                     height: 1,
                     ..inner
                 };
+                let hovered = self
+                    .hover
+                    .is_some_and(|(mx, my)| rect.contains(Position::new(mx, my)));
+                let label_style = if hovered {
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+                } else {
+                    Style::default().add_modifier(Modifier::UNDERLINED)
+                };
                 self.render_side_lines(
                     f,
                     rect,
                     vec![Line::from(vec![
                         Span::styled(" ▶ ", Style::default().fg(Color::Cyan)),
-                        Span::styled(
-                            label.clone(),
-                            Style::default().add_modifier(Modifier::UNDERLINED),
-                        ),
+                        Span::styled(label.clone(), label_style),
                     ])],
                 );
                 self.buttons.push((rect, Button::Action(i)));
@@ -565,7 +621,7 @@ impl App {
         f.render_widget(Paragraph::new(lines), rect);
     }
 
-    fn draw_status(&self, f: &mut Frame, area: Rect) {
+    fn status_lines(&self, width: usize) -> Vec<Line<'static>> {
         let s = &self.session.screen;
         let mut spans = Vec::new();
         if let Some(why) = &self.session.closed {
@@ -595,13 +651,21 @@ impl App {
         if !self.pending.is_empty() {
             spans.push(Span::styled("  実行中…", Style::default().fg(Color::Cyan)));
         }
+        let prefix_w: usize = spans.iter().map(|sp| disp_width(sp.content.as_ref())).sum();
+        let mut lines = Vec::new();
         if let Some((m, _)) = &self.message {
-            spans.push(Span::styled(
-                format!("  {m}"),
-                Style::default().fg(Color::LightRed),
-            ));
+            let inline = format!("  {m}");
+            if prefix_w + disp_width(&inline) <= width {
+                spans.push(Span::styled(inline, Style::default().fg(Color::LightRed)));
+                lines.push(Line::from(spans));
+            } else {
+                lines.push(Line::from(spans));
+                lines.extend(styled_lines(m, width, Style::default().fg(Color::LightRed)));
+            }
+        } else {
+            lines.push(Line::from(spans));
         }
-        f.render_widget(Paragraph::new(Line::from(spans)), area);
+        lines
     }
 
     fn draw_keys(&mut self, f: &mut Frame, area: Rect) {
@@ -634,11 +698,19 @@ impl App {
                 width: w,
                 height: 1,
             };
+            let hovered = self
+                .hover
+                .is_some_and(|(mx, my)| rect.contains(Position::new(mx, my)));
+            let style = if hovered {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::Black).bg(Color::Gray)
+            };
             f.render_widget(
-                Paragraph::new(Span::styled(
-                    format!("[{label}]"),
-                    Style::default().fg(Color::Black).bg(Color::Gray),
-                )),
+                Paragraph::new(Span::styled(format!("[{label}]"), style)),
                 rect,
             );
             self.buttons.push((rect, b));
@@ -930,15 +1002,53 @@ fn cell_style(s: &Screen, pos: usize) -> Style {
         _ => {}
     }
     // 短い入力欄は下線で示す (画面の残り全体が入力欄になる TSO の行モードでは引かない)
-    if !fa.protected() && cell.attr.is_none() && s.field_span(start).len() <= 160 {
+    if is_input_box(s, pos) {
         style = style.add_modifier(Modifier::UNDERLINED);
     }
     style
 }
 
+/// 下線で示す短い入力欄かどうか
+fn is_input_box(s: &Screen, pos: usize) -> bool {
+    let Some(start) = s.field_start(pos) else {
+        return false;
+    };
+    let fa = s.cells[start].attr.unwrap();
+    !fa.protected() && s.cells[pos].attr.is_none() && s.field_span(start).len() <= 160
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    fn test_app(screen: Screen) -> App {
+        let sources = Sources {
+            dirs: vec![],
+            builtin: true,
+        };
+        let guide = Guide::load(&sources).unwrap();
+        App::new(Session::for_test(screen), guide, sources)
+    }
+
+    fn buffer_text(terminal: &Terminal<TestBackend>) -> String {
+        let buf = terminal.backend().buffer();
+        let area = buf.area;
+        let mut out = String::new();
+        for y in 0..area.height {
+            let mut line = String::new();
+            let mut x = 0;
+            while x < area.width {
+                let sym = buf[(x, y)].symbol();
+                line.push_str(sym);
+                x += disp_width(sym).max(1) as u16;
+            }
+            out.push_str(line.trim_end());
+            out.push('\n');
+        }
+        out
+    }
 
     #[test]
     fn wraps_japanese_by_width() {
@@ -948,6 +1058,11 @@ mod tests {
         assert_eq!(
             wrap("ここで LOGON と打つ", 10),
             vec!["ここで", "LOGON と打", "つ"]
+        );
+        // 箇条書きの折り返しは 2 文字字下げする
+        assert_eq!(
+            wrap("- あいうえおかきく", 10),
+            vec!["- あいうえ", "  おかきく"]
         );
     }
 
@@ -960,5 +1075,160 @@ mod tests {
         assert!(matches!(steps[3], Step::Aid(AidKey::Enter)));
         let steps = parse_keys("{pf11}");
         assert!(matches!(steps[0], Step::Aid(AidKey::Pf(11))));
+    }
+
+    #[test]
+    fn scenario_vtam_logon_guide_and_term_hover() {
+        let mut screen = Screen::default();
+        screen.locked = false;
+        screen.put_field(23, 1, 0x20);
+        screen.put_str(23, 2, "TSO Logon ===>");
+        screen.put_field(23, 17, 0x00);
+        screen.put_field(23, 40, 0x20);
+        screen.home();
+
+        let mut app = test_app(screen);
+        let mut terminal = Terminal::new(TestBackend::new(154, 30)).unwrap();
+        terminal.draw(|f| app.draw(f)).unwrap();
+
+        let rendered = buffer_text(&terminal);
+        // 右ペインのタイトルが「ガイド」であり、説明文と 2 列のキー操作が出ていること
+        assert!(rendered.contains(" ガイド "));
+        assert!(!rendered.contains(" 案内 "));
+        assert!(rendered.contains("TSO のログオン画面"));
+        assert!(rendered.contains("- MVS の通信制御 VTAM が出す最初の画面 (USS 画面)"));
+        assert!(rendered.contains("Tab / S-Tab"));
+        assert!(rendered.contains("Shift+F1〜12"));
+
+        // ガイド欄の中の「VTAM」にマウスを乗せると、VTAM の正式名称と説明がツールチップで出る
+        let (lx, ly, line) = app
+            .side_lines
+            .iter()
+            .find(|(_, _, t)| t.contains("VTAM"))
+            .unwrap()
+            .clone();
+        let vtam_col = disp_width(&line[..line.find("VTAM").unwrap()]) as u16;
+        app.handle_event(Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Moved,
+            column: lx + vtam_col + 1,
+            row: ly,
+            modifiers: KeyModifiers::NONE,
+        }));
+        terminal.draw(|f| app.draw(f)).unwrap();
+
+        let rendered = buffer_text(&terminal);
+        assert!(rendered.contains("Virtual Telecommunications Access Method"));
+        assert!(rendered.contains("仮想通信アクセス方式"));
+        // ガイド欄の「VTAM」自身が反転ハイライトされていること
+        let cell = &terminal.backend().buffer()[(lx + vtam_col, ly)];
+        assert!(cell.modifier.contains(Modifier::REVERSED));
+
+        // ガイド欄の中の「MVS」にマウスを乗せると、MVS の説明が出る
+        let mvs_col = disp_width(&line[..line.find("MVS").unwrap()]) as u16;
+        app.handle_event(Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Moved,
+            column: lx + mvs_col,
+            row: ly,
+            modifiers: KeyModifiers::NONE,
+        }));
+        terminal.draw(|f| app.draw(f)).unwrap();
+        let rendered = buffer_text(&terminal);
+        assert!(rendered.contains("Multiple Virtual Storage"));
+
+        // 3270 端末画面の「Logon」(23 行 6 桁) にマウスを乗せると、用語と入力欄の説明が出る
+        app.handle_event(Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Moved,
+            column: 1 + 6,
+            row: 1 + 22,
+            modifiers: KeyModifiers::NONE,
+        }));
+        terminal.draw(|f| app.draw(f)).unwrap();
+        let rendered = buffer_text(&terminal);
+        assert!(rendered.contains("LOGON (ログオン)"));
+        assert!(rendered.contains("23行7桁"));
+    }
+
+    #[test]
+    fn scenario_pointer_shape_and_button_click() {
+        let mut screen = Screen::default();
+        screen.locked = false;
+        screen.put_field(23, 1, 0x20);
+        screen.put_str(23, 2, "TSO Logon ===>");
+        screen.put_field(23, 17, 0x00);
+        screen.put_field(23, 40, 0x20);
+        screen.home();
+
+        let mut app = test_app(screen);
+        let mut terminal = Terminal::new(TestBackend::new(154, 30)).unwrap();
+        terminal.draw(|f| app.draw(f)).unwrap();
+
+        // 初期状態および保護領域の上では通常の矢印 (Default)
+        assert_eq!(app.desired_pointer(), Pointer::Default);
+        app.hover = Some((2, 2));
+        assert_eq!(app.desired_pointer(), Pointer::Default);
+
+        // 3270 の下線付き入力欄 (23 行 18 桁) の上ではテキスト入力 (Text)
+        app.hover = Some((1 + 17, 1 + 22));
+        assert_eq!(app.desired_pointer(), Pointer::Text);
+
+        // 「▶ IBMUSER でログオン」ボタンの上では指差し (Hand) になり、クリックで入力される
+        let action_rect = app
+            .buttons
+            .iter()
+            .find_map(|(r, b)| matches!(b, Button::Action(0)).then_some(*r))
+            .unwrap();
+        app.hover = Some((action_rect.x + 2, action_rect.y));
+        assert_eq!(app.desired_pointer(), Pointer::Hand);
+
+        app.handle_event(Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: action_rect.x + 2,
+            row: action_rect.y,
+            modifiers: KeyModifiers::NONE,
+        }));
+        app.run_pending();
+        assert!(app.session.screen.row_text(22).contains("LOGON IBMUSER"));
+        assert!(app.session.screen.locked);
+    }
+
+    #[test]
+    fn scenario_quit_confirmation_and_long_message_wrapping() {
+        let mut screen = Screen::default();
+        screen.locked = false;
+        screen.put_str(1, 1, "READY");
+
+        let mut app = test_app(screen);
+        let mut terminal = Terminal::new(TestBackend::new(154, 30)).unwrap();
+
+        // ログオン中に Ctrl+Q を 1 回押すと、終了せず警告が 1 行に収まって全体表示される
+        app.handle_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('q'),
+            KeyModifiers::CONTROL,
+        )));
+        assert!(!app.quit);
+        terminal.draw(|f| app.draw(f)).unwrap();
+        let rendered = buffer_text(&terminal);
+        assert!(rendered.contains("LOGOFF しないとセッションが残る。もう一度押すと終了"));
+
+        // 別のキーを押すと確認状態が解除される
+        app.handle_event(Event::Key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE)));
+        app.handle_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('q'),
+            KeyModifiers::CONTROL,
+        )));
+        assert!(!app.quit);
+
+        // 続けてもう一度 Ctrl+Q を押すと終了する
+        app.handle_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('q'),
+            KeyModifiers::CONTROL,
+        )));
+        assert!(app.quit);
+
+        // 82 桁を超える長いエラー通知でも、ステータス行が自動で折り返されて末尾まで表示される
+        app.notify("辞書の読み込みに失敗: /very/long/path/to/site/guide/screens.toml: TOML parse error at line 42, column 10 (末尾確認)");
+        terminal.draw(|f| app.draw(f)).unwrap();
+        let rendered = buffer_text(&terminal);
+        assert!(rendered.contains("(末尾確認)"));
     }
 }

@@ -604,4 +604,132 @@ keys = "SITE{enter}"
             }
         }
     }
+
+    #[test]
+    fn all_builtin_screens_match() {
+        let g = builtin();
+        let cases: &[(&str, &[(usize, &str)])] = &[
+            (
+                "hercules-logo",
+                &[
+                    (1, "Hercules Version 4.7"),
+                    (24, "CLEAR the screen or hit ENTER"),
+                ],
+            ),
+            ("vtam-logon", &[(23, "TSO Logon ===>")]),
+            (
+                "logon-password",
+                &[(2, "ENTER CURRENT PASSWORD FOR IBMUSER-")],
+            ),
+            ("logon-in-use", &[(1, "IKJ56425I LOGON REJECTED")]),
+            (
+                "reconnected",
+                &[(1, "IKT00300I LOGON RECONNECT SUCCESSFUL")],
+            ),
+            ("logon-prompt", &[(1, "IKJ56400A ENTER LOGON OR LOGOFF-")]),
+            ("erp", &[(1, "IKT00405I SCREEN ERASURE CAUSED BY ERROR")]),
+            (
+                "tso-welcome",
+                &[(1, "WELCOME TO MVS COMMUNITY EDITION"), (12, "READY")],
+            ),
+            (
+                "kicks-startup",
+                &[
+                    (1, " KICKS version 1.5.0(0) startup using SIT=1$,"),
+                    (3, " loading KIKSIT1$ - 80 bytes at AF130, ep AF130"),
+                    (24, " ***"),
+                ],
+            ),
+            (
+                "kicks-ksgm",
+                &[
+                    (1, " KSGM for tso user IBMUSER  at terminal U400"),
+                    (24, " Press PF1 for help, CLEAR to continue..."),
+                ],
+            ),
+            ("kicks-shutdown", &[(1, " KICKS is shutting down...")]),
+            ("tso-more", &[(24, " ***")]),
+            ("tso-ready", &[(1, "TIME-08:00:00"), (2, "READY")]),
+            ("tso-blank", &[]),
+            ("ispf-primary", &[(1, "  ISPF Primary Option Menu")]),
+            ("rfe-primary", &[(3, "  REVIEW FRONT END")]),
+            (
+                "dslist-entry",
+                &[(1, "RFE DSLIST"), (6, "Data set name prefix ==> SYS1")],
+            ),
+            ("dslist", &[(1, "RFE DSLIST"), (2, "S DATA-SET-NAME")]),
+            (
+                "browse-hex",
+                &[
+                    (1, " SYS1.PARMLIB on MVS000 ---- Line 1 Col 1 40"),
+                    (4, &"----/\\\\\\".repeat(10)),
+                ],
+            ),
+            (
+                "browse",
+                &[
+                    (1, " SYS1.PARMLIB on MVS000 ---- Line 1 Col 1 80"),
+                    (4, &"----+---".repeat(10)),
+                ],
+            ),
+        ];
+
+        for &(expected_id, rows) in cases {
+            let mut s = Screen::default();
+            for &(r, text) in rows {
+                s.put_str(r, 1, text);
+            }
+            assert_eq!(
+                g.screen_id(&s),
+                Some(expected_id),
+                "failed to match screen {expected_id}"
+            );
+        }
+    }
+
+    #[test]
+    fn abbreviations_and_terms_resolve() {
+        let g = builtin();
+        let cases = [
+            ("MVS", "Multiple Virtual Storage"),
+            ("MVS/CE", "MVS Community Edition"),
+            ("VTAM", "Virtual Telecommunications Access Method"),
+            ("USS", "Unformatted System Services"),
+            ("TSO", "Time Sharing Option"),
+            ("ISPF", "Interactive System Productivity Facility"),
+            ("RFE", "Review Front End"),
+            ("Hercules", "エミュレータ"),
+            ("JES2", "Job Entry Subsystem"),
+            ("JCL", "Job Control Language"),
+            ("DASD", "Direct Access Storage Device"),
+            ("VSAM", "Virtual Storage Access Method"),
+            ("EBCDIC", "Extended Binary Coded Decimal Interchange Code"),
+            ("CCSID", "Coded Character Set Identifier"),
+            ("PF3", "Program Function Key"),
+            ("PA1", "Program Attention Key"),
+            ("CLEAR", "画面消去"),
+            ("KICKS", "KICKS for TSO"),
+            ("KSSF", "サインオフ"),
+            ("KIKSIT1$", "KICKS の表"),
+            ("LOGON", "ログオン"),
+            ("LOGOFF", "ログオフ"),
+            ("RECONNECT", "再接続"),
+            ("LISTCAT", "List Catalog"),
+            ("HEX ON", "16 進表示"),
+            ("COMP-3", "Packed Decimal"),
+        ];
+        for (word, expected_in_title) in cases {
+            let (notes, span) = g.term_notes_at(word, 0);
+            assert!(
+                !notes.is_empty(),
+                "term '{word}' should match in builtin guide"
+            );
+            assert_eq!(span, Some((0, disp_width(word))));
+            assert!(
+                notes[0].title.contains(expected_in_title),
+                "term '{word}' title '{}' did not contain '{expected_in_title}'",
+                notes[0].title
+            );
+        }
+    }
 }

@@ -511,14 +511,14 @@ impl Screen {
     /// 入力できない理由。入力できるなら None
     fn input_error(&self, pos: usize, c: Option<char>) -> Option<&'static str> {
         if self.locked {
-            return Some("キーボードがロックされている (ホストの応答待ち)。Ctrl+R で解除できる");
+            return Some("応答待ちでロック中 (Ctrl+R で解除)");
         }
         if self.cells[pos].attr.is_some() {
-            return Some("ここは属性の位置で、入力できない。Tab で入力欄へ移る");
+            return Some("属性位置には入力できない (Tab で入力欄へ)");
         }
         if let Some(f) = self.field_at(pos) {
             if f.protected() {
-                return Some("ここは表示専用の欄で、入力できない。Tab で入力欄へ移る");
+                return Some("表示専用の欄である (Tab で入力欄へ)");
             }
             if let Some(c) = c
                 && f.numeric()
@@ -666,4 +666,88 @@ fn query_reply() -> Vec<u8> {
         out.extend_from_slice(f);
     }
     out
+}
+
+#[cfg(test)]
+impl Screen {
+    /// テスト用: 1 始まりの (row, col) から文字列を書く
+    pub fn put_str(&mut self, row: usize, col: usize, s: &str) {
+        let start = (row - 1) * COLS + (col - 1);
+        for (i, c) in s.chars().enumerate() {
+            if let Some(e) = a2e(c) {
+                self.cells[(start + i) % SIZE].ch = e;
+            }
+        }
+    }
+
+    /// テスト用: 1 始まりの (row, col) に属性バイトを置く
+    pub fn put_field(&mut self, row: usize, col: usize, byte: u8) {
+        let pos = (row - 1) * COLS + (col - 1);
+        self.cells[pos] = Cell {
+            ch: 0,
+            attr: Some(FieldAttr {
+                byte,
+                ext: Ext::default(),
+            }),
+            ext: Ext::default(),
+        };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn formatted_field_editing_and_read_modified() {
+        let mut s = Screen {
+            locked: false,
+            ..Screen::default()
+        };
+        // 1 行 1 桁: 保護属性、2〜15 桁: "TSO Logon ===>"
+        s.put_field(1, 1, 0x20);
+        s.put_str(1, 2, "TSO Logon ===>");
+        // 1 行 16 桁: 非保護の入力欄 (長さ 10)、27 桁: 保護属性
+        s.put_field(1, 16, 0x00);
+        s.put_field(1, 27, 0x20);
+
+        s.home();
+        assert_eq!(s.cursor, 16);
+        for c in "IBMUSER".chars() {
+            s.type_char(c).unwrap();
+        }
+        assert!(s.row_text(0).contains("TSO Logon ===> IBMUSER"));
+        s.backspace().unwrap();
+        assert!(s.row_text(0).contains("TSO Logon ===> IBMUSE "));
+        s.erase_eof().unwrap();
+
+        s.home();
+        for c in "LOGON".chars() {
+            s.type_char(c).unwrap();
+        }
+        let rec = s.press(Aid::Enter);
+        assert_eq!(rec[0], 0x7D); // Enter AID
+        assert!(s.locked);
+    }
+
+    #[test]
+    fn input_errors_are_reported() {
+        let mut s = Screen::default();
+        assert!(s.type_char('A').unwrap_err().contains("ロック中"));
+
+        s.locked = false;
+        s.put_field(1, 1, 0x20); // 保護欄
+        s.put_field(1, 10, 0x10); // 数字専用欄
+        s.put_field(1, 20, 0x20);
+
+        s.cursor = 0; // 属性バイトの位置
+        assert!(s.type_char('A').unwrap_err().contains("属性位置"));
+
+        s.cursor = 1; // 保護欄の中
+        assert!(s.type_char('A').unwrap_err().contains("表示専用"));
+
+        s.cursor = 10; // 数字専用欄の中
+        assert!(s.type_char('A').unwrap_err().contains("数字専用"));
+        assert!(s.type_char('9').is_ok());
+    }
 }

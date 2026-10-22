@@ -34,12 +34,20 @@ pub enum NetEvent {
 
 #[derive(Clone)]
 pub struct Sender3270 {
-    stream: Arc<Mutex<TcpStream>>,
+    stream: Option<Arc<Mutex<TcpStream>>>,
 }
 
 impl Sender3270 {
+    #[cfg(test)]
+    pub fn dummy() -> Sender3270 {
+        Sender3270 { stream: None }
+    }
+
     /// 3270 のレコードを送る。0xFF は IAC IAC に重ね、末尾に IAC EOR を付ける
     pub fn send_record(&self, data: &[u8]) -> std::io::Result<()> {
+        let Some(stream) = &self.stream else {
+            return Ok(());
+        };
         let mut out = Vec::with_capacity(data.len() + 2);
         for &b in data {
             out.push(b);
@@ -48,7 +56,7 @@ impl Sender3270 {
             }
         }
         out.extend_from_slice(&[IAC, EOR]);
-        self.stream.lock().unwrap().write_all(&out)
+        stream.lock().unwrap().write_all(&out)
     }
 }
 
@@ -58,7 +66,7 @@ pub fn connect(addr: &str, tx: Sender<NetEvent>) -> anyhow::Result<Sender3270> {
     stream.set_nodelay(true)?;
     let reader = stream.try_clone()?;
     let sender = Sender3270 {
-        stream: Arc::new(Mutex::new(stream)),
+        stream: Some(Arc::new(Mutex::new(stream))),
     };
     let writer = sender.clone();
     thread::spawn(move || receive_loop(reader, writer, tx));
@@ -83,7 +91,9 @@ fn receive_loop(mut reader: TcpStream, writer: Sender3270, tx: Sender<NetEvent>)
         for &b in &buf[..n] {
             match parser.feed(b) {
                 Some(Output::Reply(bytes)) => {
-                    if writer.stream.lock().unwrap().write_all(&bytes).is_err() {
+                    if let Some(s) = &writer.stream
+                        && s.lock().unwrap().write_all(&bytes).is_err()
+                    {
                         return;
                     }
                 }
