@@ -21,6 +21,7 @@ const USAGE: &str = "\
                      環境変数 CI3270_GUIDE_PATH (: 区切り) でも足せる (存在しないディレクトリは無視する)
   --no-builtin       組み込みの辞書を読まない (組み込みの辞書そのものを書くときに --guide guide と使う)
                      辞書は Ctrl+L で読み直せる
+  --plain            ガイドを消した状態 (普通の 3270 端末と同じ画面) で始める。Ctrl+G で切り替えられる
   --script 手順      画面を出さずに手順を流し、各 dump で画面を標準出力に出す (動作確認用)
                      手順は ; 区切り: wait / waitfor 文字列 / type 文字列 / enter / pf1..pf24 / pa1..pa3 /
                      clear / tab / cursor 行 桁 / logoff / dump / explain 行 桁 (その位置の説明)
@@ -31,6 +32,7 @@ fn main() -> anyhow::Result<()> {
     let mut script = None;
     let mut dirs: Vec<PathBuf> = Vec::new();
     let mut builtin = true;
+    let mut guided = true;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -41,6 +43,7 @@ fn main() -> anyhow::Result<()> {
             "--script" => script = args.next(),
             "--guide" => dirs.extend(args.next().map(PathBuf::from)),
             "--no-builtin" => builtin = false,
+            "--plain" => guided = false,
             _ if a.starts_with('-') => anyhow::bail!("不明なオプション: {a}\n\n{USAGE}"),
             _ => host = a,
         }
@@ -55,7 +58,7 @@ fn main() -> anyhow::Result<()> {
         Session::connect(&host).map_err(|e| anyhow::anyhow!("{host} に接続できない: {e}"))?;
     match script {
         Some(s) => run_script(&mut session, &guide, &s),
-        None => app::App::new(session, guide, sources).run(),
+        None => app::App::new(session, guide, sources, guided).run(),
     }
 }
 

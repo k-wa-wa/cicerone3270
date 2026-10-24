@@ -1,5 +1,6 @@
 // TUI 本体。左に 3270 の画面、右にガイド、下に状態行とキーのボタンを出す。
 // マウスを 3270 の画面やガイドの用語に乗せると、説明をツールチップで出す。
+// Ctrl+G でガイドを消すと、3270 の画面と状態行だけの普通の端末になる。
 
 use std::collections::VecDeque;
 use std::io;
@@ -129,14 +130,17 @@ pub struct App {
     buttons: Vec<(Rect, Button)>,
     /// 前回描いたガイド欄の各行 (開始 x, 行 y, 文字列)
     side_lines: Vec<(u16, u16, String)>,
-    term_area: Rect,
+    /// 前回描いた 3270 の画面の文字の範囲 (枠の内側)
+    term_inner: Rect,
+    /// ガイド (ガイド欄・ツールチップ・ボタン) を出すか。消すと普通の 3270 端末として振る舞う
+    guided: bool,
     pointer: Pointer,
     quit_armed: Option<Instant>,
     quit: bool,
 }
 
 impl App {
-    pub fn new(session: Session, guide: Guide, sources: Sources) -> App {
+    pub fn new(session: Session, guide: Guide, sources: Sources, guided: bool) -> App {
         App {
             session,
             guide,
@@ -146,7 +150,8 @@ impl App {
             pending: VecDeque::new(),
             buttons: Vec::new(),
             side_lines: Vec::new(),
-            term_area: Rect::default(),
+            term_inner: Rect::default(),
+            guided,
             pointer: Pointer::Default,
             quit_armed: None,
             quit: false,
@@ -280,6 +285,10 @@ impl App {
                 self.reload_guide();
                 return;
             }
+            KeyCode::Char('g') if ctrl => {
+                self.guided = !self.guided;
+                return;
+            }
             KeyCode::Char(c) if !ctrl => Step::Text(c.to_string()),
             KeyCode::Enter => Step::Aid(AidKey::Enter),
             KeyCode::Tab => Step::Tab,
@@ -358,7 +367,7 @@ impl App {
 
     fn handle_mouse(&mut self, m: MouseEvent) {
         let pos = Position::new(m.column, m.row);
-        let inner = inner(self.term_area);
+        let inner = self.term_inner;
         let cell = inner
             .contains(pos)
             .then(|| ((m.row - inner.y) as usize, (m.column - inner.x) as usize));
@@ -410,7 +419,7 @@ impl App {
         if self.buttons.iter().any(|(r, _)| r.contains(pos)) {
             return Pointer::Hand;
         }
-        let term_inner = inner(self.term_area);
+        let term_inner = self.term_inner;
         if term_inner.contains(pos) {
             let r = (my - term_inner.y) as usize;
             let c = (mx - term_inner.x) as usize;
@@ -427,6 +436,10 @@ impl App {
         self.buttons.clear();
         self.side_lines.clear();
         let area = f.area();
+        if !self.guided {
+            self.draw_plain(f, area);
+            return;
+        }
         // 左に 3270 の画面・状態行・ボタン、右にガイド。狭ければガイドを下に置く
         let (left, side) = if area.width >= TERM_W + SIDE_MIN_W {
             let [l, s] = Layout::horizontal([
@@ -446,7 +459,6 @@ impl App {
             Constraint::Min(0),
         ])
         .areas(left);
-        self.term_area = term;
         self.draw_terminal(f, term);
         f.render_widget(Paragraph::new(status_lines), status);
         self.draw_keys(f, keys);
@@ -454,8 +466,27 @@ impl App {
         self.draw_tooltip(f);
     }
 
-    fn draw_terminal(&self, f: &mut Frame, area: Rect) {
-        let s = &self.session.screen;
+    /// ガイドを消したときの画面。普通の 3270 端末と同じく、24 行 80 桁の画面と、その下の状態行だけを出す
+    fn draw_plain(&mut self, f: &mut Frame, area: Rect) {
+        let [term, status] =
+            Layout::vertical([Constraint::Length(ROWS as u16), Constraint::Min(0)]).areas(area);
+        let term = Rect {
+            width: term.width.min(COLS as u16),
+            ..term
+        };
+        self.term_inner = term;
+        self.draw_cells(f, term);
+        let mut lines = self.status_lines(area.width as usize);
+        if let Some(first) = lines.first_mut() {
+            first.spans.push(Span::styled(
+                "  Ctrl+G ガイド",
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+        f.render_widget(Paragraph::new(lines), status);
+    }
+
+    fn draw_terminal(&mut self, f: &mut Frame, area: Rect) {
         let title = format!(" 3270 端末  {} ", self.session.host);
         let block = Block::default()
             .borders(Borders::ALL)
@@ -463,7 +494,14 @@ impl App {
             .title(title);
         f.render_widget(block, area);
         let inner = inner(area);
-        let hover_cell = self.hover.and_then(|(mx, my)| {
+        self.term_inner = inner;
+        self.draw_cells(f, inner);
+    }
+
+    /// 3270 の画面の文字を area に描き、カーソルを置く。ガイドを出しているときは、マウスの乗った文字を反転する
+    fn draw_cells(&self, f: &mut Frame, inner: Rect) {
+        let s = &self.session.screen;
+        let hover_cell = self.hover.filter(|_| self.guided).and_then(|(mx, my)| {
             inner
                 .contains(Position::new(mx, my))
                 .then(|| ((my - inner.y) as usize, (mx - inner.x) as usize))
@@ -722,7 +760,7 @@ impl App {
         let Some((mx, my)) = self.hover else {
             return;
         };
-        let term_inner = inner(self.term_area);
+        let term_inner = self.term_inner;
         let notes = if term_inner.contains(Position::new(mx, my)) {
             let r = (my - term_inner.y) as usize;
             let c = (mx - term_inner.x) as usize;
@@ -874,6 +912,7 @@ const KEY_HELP_LEFT: &[(&str, &str)] = &[
     ("Insert", "挿入モード切替"),
     ("Ctrl+L", "辞書の読み直し"),
     ("ホバー", "用語・欄の説明"),
+    ("Ctrl+G", "ガイドを消す"),
 ];
 
 const KEY_HELP_RIGHT: &[(&str, &str)] = &[
@@ -884,6 +923,7 @@ const KEY_HELP_RIGHT: &[(&str, &str)] = &[
     ("Ctrl+R", "ロック解除"),
     ("Ctrl+Q", "終了"),
     ("クリック", "カーソル移動"),
+    ("BS / Delete", "1 文字消す"),
 ];
 
 fn pad_right(s: &str, target_w: usize) -> String {
@@ -1020,7 +1060,7 @@ mod tests {
             builtin: true,
         };
         let guide = Guide::load(&sources).unwrap();
-        App::new(Session::for_test(screen), guide, sources)
+        App::new(Session::for_test(screen), guide, sources, true)
     }
 
     fn buffer_text(terminal: &Terminal<TestBackend>) -> String {
@@ -1180,6 +1220,66 @@ mod tests {
         app.run_pending();
         assert!(app.session.screen.row_text(22).contains("LOGON IBMUSER"));
         assert!(app.session.screen.locked);
+    }
+
+    #[test]
+    fn scenario_plain_mode_hides_guide() {
+        let mut screen = Screen::default();
+        screen.locked = false;
+        screen.put_field(23, 1, 0x20);
+        screen.put_str(23, 2, "TSO Logon ===>");
+        screen.put_field(23, 17, 0x00);
+        screen.put_field(23, 40, 0x20);
+        screen.home();
+
+        let mut app = test_app(screen);
+        let mut terminal = Terminal::new(TestBackend::new(154, 30)).unwrap();
+
+        // Ctrl+G でガイドを消すと、枠もガイド欄もボタンも無く、3270 の画面が左上から始まり、その下に状態行が出る
+        app.handle_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('g'),
+            KeyModifiers::CONTROL,
+        )));
+        terminal.draw(|f| app.draw(f)).unwrap();
+        let rendered = buffer_text(&terminal);
+        assert!(!rendered.contains(" ガイド "));
+        assert!(!rendered.contains("3270 端末"));
+        assert!(!rendered.contains("[Enter]"));
+        let rows: Vec<&str> = rendered.lines().collect();
+        assert!(rows[22].starts_with(" TSO Logon ===>"));
+        assert!(rows[24].contains("入力できる"));
+        assert!(rows[24].contains("Ctrl+G ガイド"));
+        assert!(app.buttons.is_empty());
+
+        // 用語の上にマウスを乗せても、ツールチップも反転も出ない
+        app.handle_event(Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Moved,
+            column: 6,
+            row: 22,
+            modifiers: KeyModifiers::NONE,
+        }));
+        terminal.draw(|f| app.draw(f)).unwrap();
+        let rendered = buffer_text(&terminal);
+        assert!(!rendered.contains("LOGON (ログオン)"));
+        let cell = &terminal.backend().buffer()[(6, 22)];
+        assert!(!cell.modifier.contains(Modifier::REVERSED));
+
+        // クリックでは、枠の無い位置のままカーソルが移る (23 行 20 桁)
+        app.handle_event(Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 19,
+            row: 22,
+            modifiers: KeyModifiers::NONE,
+        }));
+        assert_eq!(app.session.screen.cursor, 22 * COLS + 19);
+
+        // もう一度 Ctrl+G でガイドが戻る
+        app.handle_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('g'),
+            KeyModifiers::CONTROL,
+        )));
+        terminal.draw(|f| app.draw(f)).unwrap();
+        assert!(buffer_text(&terminal).contains(" ガイド "));
     }
 
     #[test]
